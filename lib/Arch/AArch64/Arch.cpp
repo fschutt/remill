@@ -4114,6 +4114,47 @@ bool TryDecodeST1_ASISDLSE_R2_2V(const InstData &data, Instruction &inst) {
   return TryDecodeST1_ASISDLSE_R1_1V(data, inst);
 }
 
+// ST2  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>]
+// Same memory shape as LD2 (interleaved pair); mirror LD2_ASISDLSE_R2
+// but mark the mem op as Write. Reserved arrangement 1D (size=11, Q=0)
+// is rejected to match the LD2 decoder.
+bool TryDecodeST2_ASISDLSE_R2(const InstData &data, Instruction &inst) {
+  if (data.size == 0x3 && !data.Q) {
+    return false;  // Reserved (arrangement specifier 1D).
+  }
+  uint64_t num_bytes = 0;
+  if (!TryDecodeLDnSTn(data, inst, &num_bytes)) {
+    return false;
+  }
+  AddBasePlusOffsetMemOp(inst, kActionWrite, num_bytes * 8, data.Rn, 0);
+  return true;
+}
+
+// ST2  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>], <imm>  (post-index, immediate)
+bool TryDecodeST2_ASISDLSEP_I2_I(const InstData &data, Instruction &inst) {
+  if (data.size == 0x3 && !data.Q) {
+    return false;
+  }
+  uint64_t offset = 0;
+  if (!TryDecodeLDnSTn(data, inst, &offset)) {
+    return false;
+  }
+  AddPostIndexMemOp(inst, kActionWrite, offset * 8, data.Rn, offset);
+  return true;
+}
+
+// ST2  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>], <Xm>  (post-index, register)
+bool TryDecodeST2_ASISDLSEP_R2_R(const InstData &data, Instruction &inst) {
+  if (data.size == 0x3 && !data.Q) {
+    return false;
+  }
+  uint64_t offset = 0;
+  if (!TryDecodeLDnSTn(data, inst, &offset)) {
+    return false;
+  }
+  AddPostIndexMemOp(inst, kActionWrite, offset * 8, data.Rn, data.Rm);
+  return true;
+}
 
 // LD1  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>], <imm>
 bool TryDecodeLD1_ASISDLSEP_I2_I2(const InstData &data, Instruction &inst) {
@@ -4198,6 +4239,21 @@ bool TryDecodeCMTST_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
 // ADDP  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
 bool TryDecodeADDP_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
   return TryDecodeADD_ASIMDSAME_ONLY(data, inst);
+}
+
+// ADDP  <V><d>, <Vn>.<T>
+//
+// Scalar-pair form: sums the two 64-bit lanes of Vn into a single
+// 64-bit scalar Vd. Only the .2D arrangement is valid (size=11).
+bool TryDecodeADDP_ASISDPAIR_ONLY(const InstData &data, Instruction &inst) {
+  if (data.size != 0x3) {
+    return false;  // Only .2D is defined.
+  }
+  AddArrangementSpecifier(inst, 128, 64);
+  // Dest is a scalar D-reg; source is the 2D V-reg.
+  AddRegOperand(inst, kActionWrite, kRegD, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  return true;
 }
 
 // UMAXP  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
@@ -4666,13 +4722,113 @@ bool TryDecodeLD2_ASISDLSEP_R2_R(const InstData &data, Instruction &inst) {
 }
 
 // LD4  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>], <imm>
-bool TryDecodeLD4_ASISDLSEP_I4_I(const InstData &, Instruction &) {
-  return false;
+bool TryDecodeLD4_ASISDLSEP_I4_I(const InstData &data, Instruction &inst) {
+  return TryDecodeLD1_ASISDLSEP_I2_I2(data, inst);
 }
 
 // LD4  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeLD4_ASISDLSEP_R4_R(const InstData &, Instruction &) {
-  return false;
+bool TryDecodeLD4_ASISDLSEP_R4_R(const InstData &data, Instruction &inst) {
+  uint64_t offset = 0;
+  if (!TryDecodeLDnSTn(data, inst, &offset)) {
+    return false;
+  }
+  AddPostIndexMemOp(inst, kActionRead, offset * 8, data.Rn, data.Rm);
+  return true;
+}
+
+// LD3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <imm>
+bool TryDecodeLD3_ASISDLSEP_I3_I(const InstData &data, Instruction &inst) {
+  return TryDecodeLD1_ASISDLSEP_I2_I2(data, inst);
+}
+
+// LD3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <Xm>
+bool TryDecodeLD3_ASISDLSEP_R3_R(const InstData &data, Instruction &inst) {
+  uint64_t offset = 0;
+  if (!TryDecodeLDnSTn(data, inst, &offset)) {
+    return false;
+  }
+  AddPostIndexMemOp(inst, kActionRead, offset * 8, data.Rn, data.Rm);
+  return true;
+}
+
+// ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>]
+bool TryDecodeST1_ASISDLSE_R3_3V(const InstData &data, Instruction &inst) {
+  return TryDecodeST1_ASISDLSE_R1_1V(data, inst);
+}
+
+// ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>]
+bool TryDecodeST1_ASISDLSE_R4_4V(const InstData &data, Instruction &inst) {
+  return TryDecodeST1_ASISDLSE_R1_1V(data, inst);
+}
+
+// ST1  { <Vt>.<T> }, [<Xn|SP>], <imm>
+bool TryDecodeST1_ASISDLSEP_I1_I1(const InstData &data, Instruction &inst) {
+  return TryDecodeST1_ASISDLSEP_I2_I2(data, inst);
+}
+
+// ST1  { <Vt>.<T> }, [<Xn|SP>], <Xm>
+bool TryDecodeST1_ASISDLSEP_R1_R1(const InstData &data, Instruction &inst) {
+  uint64_t offset = 0;
+  if (!TryDecodeLDnSTn(data, inst, &offset)) {
+    return false;
+  }
+  AddPostIndexMemOp(inst, kActionWrite, offset * 8, data.Rn, data.Rm);
+  return true;
+}
+
+// ST1  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>], <Xm>
+bool TryDecodeST1_ASISDLSEP_R2_R2(const InstData &data, Instruction &inst) {
+  return TryDecodeST1_ASISDLSEP_R1_R1(data, inst);
+}
+
+// ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <imm>
+bool TryDecodeST1_ASISDLSEP_I3_I3(const InstData &data, Instruction &inst) {
+  return TryDecodeST1_ASISDLSEP_I2_I2(data, inst);
+}
+
+// ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <Xm>
+bool TryDecodeST1_ASISDLSEP_R3_R3(const InstData &data, Instruction &inst) {
+  return TryDecodeST1_ASISDLSEP_R1_R1(data, inst);
+}
+
+// ST1  { <Vt>.<T>, ..., <Vt4>.<T> }, [<Xn|SP>], <imm>
+bool TryDecodeST1_ASISDLSEP_I4_I4(const InstData &data, Instruction &inst) {
+  return TryDecodeST1_ASISDLSEP_I2_I2(data, inst);
+}
+
+// ST1  { <Vt>.<T>, ..., <Vt4>.<T> }, [<Xn|SP>], <Xm>
+bool TryDecodeST1_ASISDLSEP_R4_R4(const InstData &data, Instruction &inst) {
+  return TryDecodeST1_ASISDLSEP_R1_R1(data, inst);
+}
+
+// ST3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>]
+bool TryDecodeST3_ASISDLSE_R3(const InstData &data, Instruction &inst) {
+  return TryDecodeST2_ASISDLSE_R2(data, inst);
+}
+
+// ST3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <imm>
+bool TryDecodeST3_ASISDLSEP_I3_I(const InstData &data, Instruction &inst) {
+  return TryDecodeST2_ASISDLSEP_I2_I(data, inst);
+}
+
+// ST3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <Xm>
+bool TryDecodeST3_ASISDLSEP_R3_R(const InstData &data, Instruction &inst) {
+  return TryDecodeST2_ASISDLSEP_R2_R(data, inst);
+}
+
+// ST4  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>]
+bool TryDecodeST4_ASISDLSE_R4(const InstData &data, Instruction &inst) {
+  return TryDecodeST2_ASISDLSE_R2(data, inst);
+}
+
+// ST4  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>], <imm>
+bool TryDecodeST4_ASISDLSEP_I4_I(const InstData &data, Instruction &inst) {
+  return TryDecodeST2_ASISDLSEP_I2_I(data, inst);
+}
+
+// ST4  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>], <Xm>
+bool TryDecodeST4_ASISDLSEP_R4_R(const InstData &data, Instruction &inst) {
+  return TryDecodeST2_ASISDLSEP_R2_R(data, inst);
 }
 
 // NOT  <Vd>.<T>, <Vn>.<T>

@@ -1307,6 +1307,77 @@ DEF_ISEL(LD2_ASISDLSEP_R2_R_2D) = LD2_64_POSTINDEX<MV256>;
 
 namespace {
 
+// ST2 stores two NEON vectors interleaved at the destination. The
+// memory layout is: dst[0]=src1[0], dst[1]=src2[0], dst[2]=src1[1],
+// dst[3]=src2[1], ... The decoder marked the source V-regs as
+// "write" via TryDecodeLDnSTn — same pattern ST1 uses; the V-reg
+// reads here pull the actual values regardless of the metadata.
+#define MAKE_ST2(size) \
+  template <typename D> \
+  DEF_SEM(ST2_##size, V128W src1, V128W src2, D dst) { \
+    auto src1_vec = UReadV##size(src1); \
+    auto src2_vec = UReadV##size(src2); \
+    auto dst_vec = UClearV##size(UReadV##size(dst)); \
+    _Pragma("unroll") for (size_t i = 0, j = 0; i < NumVectorElems(src1_vec); \
+                           ++i) { \
+      dst_vec = UInsertV##size(dst_vec, j++, UExtractV##size(src1_vec, i)); \
+      dst_vec = UInsertV##size(dst_vec, j++, UExtractV##size(src2_vec, i)); \
+    } \
+    UWriteV##size(dst, dst_vec); \
+    return memory; \
+  }
+
+MAKE_ST2(8)
+MAKE_ST2(16)
+MAKE_ST2(32)
+MAKE_ST2(64)
+
+#undef MAKE_ST2
+
+#define MAKE_ST2_POSTINDEX(size) \
+  template <typename D> \
+  DEF_SEM(ST2_##size##_POSTINDEX, V128W src1, V128W src2, D dst, \
+          R64W addr_reg, ADDR next_addr) { \
+    memory = ST2_##size(memory, state, src1, src2, dst); \
+    Write(addr_reg, Read(next_addr)); \
+    return memory; \
+  }
+
+MAKE_ST2_POSTINDEX(8)
+MAKE_ST2_POSTINDEX(16)
+MAKE_ST2_POSTINDEX(32)
+MAKE_ST2_POSTINDEX(64)
+
+#undef MAKE_ST2_POSTINDEX
+
+}  // namespace
+
+DEF_ISEL(ST2_ASISDLSE_R2_8B) = ST2_8<MV128W>;
+DEF_ISEL(ST2_ASISDLSE_R2_16B) = ST2_8<MV256W>;
+DEF_ISEL(ST2_ASISDLSE_R2_4H) = ST2_16<MV128W>;
+DEF_ISEL(ST2_ASISDLSE_R2_8H) = ST2_16<MV256W>;
+DEF_ISEL(ST2_ASISDLSE_R2_2S) = ST2_32<MV128W>;
+DEF_ISEL(ST2_ASISDLSE_R2_4S) = ST2_32<MV256W>;
+DEF_ISEL(ST2_ASISDLSE_R2_2D) = ST2_64<MV256W>;
+
+DEF_ISEL(ST2_ASISDLSEP_I2_I_8B) = ST2_8_POSTINDEX<MV128W>;
+DEF_ISEL(ST2_ASISDLSEP_I2_I_16B) = ST2_8_POSTINDEX<MV256W>;
+DEF_ISEL(ST2_ASISDLSEP_I2_I_4H) = ST2_16_POSTINDEX<MV128W>;
+DEF_ISEL(ST2_ASISDLSEP_I2_I_8H) = ST2_16_POSTINDEX<MV256W>;
+DEF_ISEL(ST2_ASISDLSEP_I2_I_2S) = ST2_32_POSTINDEX<MV128W>;
+DEF_ISEL(ST2_ASISDLSEP_I2_I_4S) = ST2_32_POSTINDEX<MV256W>;
+DEF_ISEL(ST2_ASISDLSEP_I2_I_2D) = ST2_64_POSTINDEX<MV256W>;
+
+DEF_ISEL(ST2_ASISDLSEP_R2_R_8B) = ST2_8_POSTINDEX<MV128W>;
+DEF_ISEL(ST2_ASISDLSEP_R2_R_16B) = ST2_8_POSTINDEX<MV256W>;
+DEF_ISEL(ST2_ASISDLSEP_R2_R_4H) = ST2_16_POSTINDEX<MV128W>;
+DEF_ISEL(ST2_ASISDLSEP_R2_R_8H) = ST2_16_POSTINDEX<MV256W>;
+DEF_ISEL(ST2_ASISDLSEP_R2_R_2S) = ST2_32_POSTINDEX<MV128W>;
+DEF_ISEL(ST2_ASISDLSEP_R2_R_4S) = ST2_32_POSTINDEX<MV256W>;
+DEF_ISEL(ST2_ASISDLSEP_R2_R_2D) = ST2_64_POSTINDEX<MV256W>;
+
+namespace {
+
 #define MAKE_LD3(size) \
   template <typename S, size_t count> \
   DEF_SEM(LD3_##size, V128W dst1, V128W dst2, V128W dst3, S src) { \
@@ -1393,6 +1464,77 @@ DEF_ISEL(LD4_ASISDLSE_R4_8H) = LD4_16<M16, 8>;
 DEF_ISEL(LD4_ASISDLSE_R4_2S) = LD4_32<M32, 2>;
 DEF_ISEL(LD4_ASISDLSE_R4_4S) = LD4_32<M32, 4>;
 DEF_ISEL(LD4_ASISDLSE_R4_2D) = LD4_64<M64, 2>;
+
+namespace {
+
+// Post-index variants of LD3/LD4 reuse the same load body and then
+// advance the base register by the next-address ADDR operand.
+
+#define MAKE_LD3_POSTINDEX(size) \
+  template <typename S, size_t count> \
+  DEF_SEM(LD3_##size##_POSTINDEX, V128W dst1, V128W dst2, V128W dst3, S src, \
+          R64W addr_reg, ADDR next_addr) { \
+    memory = LD3_##size<S, count>(memory, state, dst1, dst2, dst3, src); \
+    Write(addr_reg, Read(next_addr)); \
+    return memory; \
+  }
+
+MAKE_LD3_POSTINDEX(8)
+MAKE_LD3_POSTINDEX(16)
+MAKE_LD3_POSTINDEX(32)
+MAKE_LD3_POSTINDEX(64)
+
+#undef MAKE_LD3_POSTINDEX
+
+#define MAKE_LD4_POSTINDEX(size) \
+  template <typename S, size_t count> \
+  DEF_SEM(LD4_##size##_POSTINDEX, V128W dst1, V128W dst2, V128W dst3, \
+          V128W dst4, S src, R64W addr_reg, ADDR next_addr) { \
+    memory = LD4_##size<S, count>(memory, state, dst1, dst2, dst3, dst4, src); \
+    Write(addr_reg, Read(next_addr)); \
+    return memory; \
+  }
+
+MAKE_LD4_POSTINDEX(8)
+MAKE_LD4_POSTINDEX(16)
+MAKE_LD4_POSTINDEX(32)
+MAKE_LD4_POSTINDEX(64)
+
+#undef MAKE_LD4_POSTINDEX
+
+}  // namespace
+
+DEF_ISEL(LD3_ASISDLSEP_I3_I_8B) = LD3_8_POSTINDEX<M8, 8>;
+DEF_ISEL(LD3_ASISDLSEP_I3_I_16B) = LD3_8_POSTINDEX<M8, 16>;
+DEF_ISEL(LD3_ASISDLSEP_I3_I_4H) = LD3_16_POSTINDEX<M16, 4>;
+DEF_ISEL(LD3_ASISDLSEP_I3_I_8H) = LD3_16_POSTINDEX<M16, 8>;
+DEF_ISEL(LD3_ASISDLSEP_I3_I_2S) = LD3_32_POSTINDEX<M32, 2>;
+DEF_ISEL(LD3_ASISDLSEP_I3_I_4S) = LD3_32_POSTINDEX<M32, 4>;
+DEF_ISEL(LD3_ASISDLSEP_I3_I_2D) = LD3_64_POSTINDEX<M64, 2>;
+
+DEF_ISEL(LD3_ASISDLSEP_R3_R_8B) = LD3_8_POSTINDEX<M8, 8>;
+DEF_ISEL(LD3_ASISDLSEP_R3_R_16B) = LD3_8_POSTINDEX<M8, 16>;
+DEF_ISEL(LD3_ASISDLSEP_R3_R_4H) = LD3_16_POSTINDEX<M16, 4>;
+DEF_ISEL(LD3_ASISDLSEP_R3_R_8H) = LD3_16_POSTINDEX<M16, 8>;
+DEF_ISEL(LD3_ASISDLSEP_R3_R_2S) = LD3_32_POSTINDEX<M32, 2>;
+DEF_ISEL(LD3_ASISDLSEP_R3_R_4S) = LD3_32_POSTINDEX<M32, 4>;
+DEF_ISEL(LD3_ASISDLSEP_R3_R_2D) = LD3_64_POSTINDEX<M64, 2>;
+
+DEF_ISEL(LD4_ASISDLSEP_I4_I_8B) = LD4_8_POSTINDEX<M8, 8>;
+DEF_ISEL(LD4_ASISDLSEP_I4_I_16B) = LD4_8_POSTINDEX<M8, 16>;
+DEF_ISEL(LD4_ASISDLSEP_I4_I_4H) = LD4_16_POSTINDEX<M16, 4>;
+DEF_ISEL(LD4_ASISDLSEP_I4_I_8H) = LD4_16_POSTINDEX<M16, 8>;
+DEF_ISEL(LD4_ASISDLSEP_I4_I_2S) = LD4_32_POSTINDEX<M32, 2>;
+DEF_ISEL(LD4_ASISDLSEP_I4_I_4S) = LD4_32_POSTINDEX<M32, 4>;
+DEF_ISEL(LD4_ASISDLSEP_I4_I_2D) = LD4_64_POSTINDEX<M64, 2>;
+
+DEF_ISEL(LD4_ASISDLSEP_R4_R_8B) = LD4_8_POSTINDEX<M8, 8>;
+DEF_ISEL(LD4_ASISDLSEP_R4_R_16B) = LD4_8_POSTINDEX<M8, 16>;
+DEF_ISEL(LD4_ASISDLSEP_R4_R_4H) = LD4_16_POSTINDEX<M16, 4>;
+DEF_ISEL(LD4_ASISDLSEP_R4_R_8H) = LD4_16_POSTINDEX<M16, 8>;
+DEF_ISEL(LD4_ASISDLSEP_R4_R_2S) = LD4_32_POSTINDEX<M32, 2>;
+DEF_ISEL(LD4_ASISDLSEP_R4_R_4S) = LD4_32_POSTINDEX<M32, 4>;
+DEF_ISEL(LD4_ASISDLSEP_R4_R_2D) = LD4_64_POSTINDEX<M64, 2>;
 
 namespace {
 

@@ -3932,9 +3932,7 @@ bool TryDecodeMLS_ASIMDSAME_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>]
-bool TryDecodeST1_ASISDLSE_R3_3V(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSE_R3_3V(const InstData &data, Instruction &inst);
 
 // ST1 ST1_asisdlse_R4_4v:
 //   0 x Rt       0
@@ -3970,9 +3968,7 @@ bool TryDecodeST1_ASISDLSE_R3_3V(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>]
-bool TryDecodeST1_ASISDLSE_R4_4V(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSE_R4_4V(const InstData &data, Instruction &inst);
 
 // ST1 ST1_asisdlsep_I1_i1:
 //   0 x Rt       0
@@ -4008,9 +4004,7 @@ bool TryDecodeST1_ASISDLSE_R4_4V(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T> }, [<Xn|SP>], <imm>
-bool TryDecodeST1_ASISDLSEP_I1_I1(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSEP_I1_I1(const InstData &data, Instruction &inst);
 
 // ST1 ST1_asisdlsep_R1_r1:
 //   0 x Rt       0
@@ -4046,9 +4040,7 @@ bool TryDecodeST1_ASISDLSEP_I1_I1(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeST1_ASISDLSEP_R1_R1(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSEP_R1_R1(const InstData &data, Instruction &inst);
 
 // ST1 ST1_asisdlsep_R2_r2:
 //   0 x Rt       0
@@ -4084,9 +4076,7 @@ bool TryDecodeST1_ASISDLSEP_R1_R1(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeST1_ASISDLSEP_R2_R2(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSEP_R2_R2(const InstData &data, Instruction &inst);
 
 // ST1 ST1_asisdlsep_I3_i3:
 //   0 x Rt       0
@@ -4122,9 +4112,7 @@ bool TryDecodeST1_ASISDLSEP_R2_R2(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <imm>
-bool TryDecodeST1_ASISDLSEP_I3_I3(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSEP_I3_I3(const InstData &data, Instruction &inst);
 
 // ST1 ST1_asisdlsep_R3_r3:
 //   0 x Rt       0
@@ -4160,9 +4148,7 @@ bool TryDecodeST1_ASISDLSEP_I3_I3(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeST1_ASISDLSEP_R3_R3(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSEP_R3_R3(const InstData &data, Instruction &inst);
 
 // ST1 ST1_asisdlsep_I4_i4:
 //   0 x Rt       0
@@ -4198,9 +4184,7 @@ bool TryDecodeST1_ASISDLSEP_R3_R3(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>], <imm>
-bool TryDecodeST1_ASISDLSEP_I4_I4(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSEP_I4_I4(const InstData &data, Instruction &inst);
 
 // ST1 ST1_asisdlsep_R4_r4:
 //   0 x Rt       0
@@ -4236,9 +4220,7 @@ bool TryDecodeST1_ASISDLSEP_I4_I4(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST1  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeST1_ASISDLSEP_R4_R4(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST1_ASISDLSEP_R4_R4(const InstData &data, Instruction &inst);
 
 // AESIMC AESIMC_B_cryptoaes:
 //   0 x Rd       0
@@ -9594,9 +9576,7 @@ bool TryDecodeLDADDLH_32_MEMOP(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // LD3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <imm>
-bool TryDecodeLD3_ASISDLSEP_I3_I(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLD3_ASISDLSEP_I3_I(const InstData &data, Instruction &inst);
 
 // LD3 LD3_asisdlsep_R3_r:
 //   0 x Rt       0
@@ -9632,9 +9612,7 @@ bool TryDecodeLD3_ASISDLSEP_I3_I(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // LD3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeLD3_ASISDLSEP_R3_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLD3_ASISDLSEP_R3_R(const InstData &data, Instruction &inst);
 
 // UADALP UADALP_asimdmisc_P:
 //   0 x Rd       0
@@ -12703,9 +12681,7 @@ bool TryDecodeSADDL_ASIMDDIFF_L(const InstData &, Instruction &) {
 //  30 1
 //  31 0
 // ADDP  <V><d>, <Vn>.<T>
-bool TryDecodeADDP_ASISDPAIR_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeADDP_ASISDPAIR_ONLY(const InstData &data, Instruction &inst);
 
 // STR STR_B_ldst_immpost:
 //   0 x Rt       0
@@ -25732,9 +25708,7 @@ bool TryDecodeCMGT_ASISDSAME_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST4  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>]
-bool TryDecodeST4_ASISDLSE_R4(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST4_ASISDLSE_R4(const InstData &data, Instruction &inst);
 
 // ST4 ST4_asisdlsep_I4_i:
 //   0 x Rt       0
@@ -25770,9 +25744,7 @@ bool TryDecodeST4_ASISDLSE_R4(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST4  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>], <imm>
-bool TryDecodeST4_ASISDLSEP_I4_I(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST4_ASISDLSEP_I4_I(const InstData &data, Instruction &inst);
 
 // ST4 ST4_asisdlsep_R4_r:
 //   0 x Rt       0
@@ -25808,9 +25780,7 @@ bool TryDecodeST4_ASISDLSEP_I4_I(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST4  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T>, <Vt4>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeST4_ASISDLSEP_R4_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST4_ASISDLSEP_R4_R(const InstData &data, Instruction &inst);
 
 // UHSUB UHSUB_asimdsame_only:
 //   0 x Rd       0
@@ -26074,9 +26044,7 @@ bool TryDecodeUMNEGL_UMSUBL_64WA_DP_3SRC(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST2  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>]
-bool TryDecodeST2_ASISDLSE_R2(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST2_ASISDLSE_R2(const InstData &data, Instruction &inst);
 
 // ST2 ST2_asisdlsep_I2_i:
 //   0 x Rt       0
@@ -26112,9 +26080,7 @@ bool TryDecodeST2_ASISDLSE_R2(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST2  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>], <imm>
-bool TryDecodeST2_ASISDLSEP_I2_I(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST2_ASISDLSEP_I2_I(const InstData &data, Instruction &inst);
 
 // ST2 ST2_asisdlsep_R2_r:
 //   0 x Rt       0
@@ -26150,9 +26116,7 @@ bool TryDecodeST2_ASISDLSEP_I2_I(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST2  { <Vt>.<T>, <Vt2>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeST2_ASISDLSEP_R2_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST2_ASISDLSEP_R2_R(const InstData &data, Instruction &inst);
 
 // USHLL UXTL_USHLL_asimdshf_L:
 //   0 x Rd       0
@@ -30370,9 +30334,7 @@ bool TryDecodeSTLRB_SL32_LDSTEXCL(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>]
-bool TryDecodeST3_ASISDLSE_R3(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST3_ASISDLSE_R3(const InstData &data, Instruction &inst);
 
 // ST3 ST3_asisdlsep_I3_i:
 //   0 x Rt       0
@@ -30408,9 +30370,7 @@ bool TryDecodeST3_ASISDLSE_R3(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <imm>
-bool TryDecodeST3_ASISDLSEP_I3_I(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST3_ASISDLSEP_I3_I(const InstData &data, Instruction &inst);
 
 // ST3 ST3_asisdlsep_R3_r:
 //   0 x Rt       0
@@ -30446,9 +30406,7 @@ bool TryDecodeST3_ASISDLSEP_I3_I(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ST3  { <Vt>.<T>, <Vt2>.<T>, <Vt3>.<T> }, [<Xn|SP>], <Xm>
-bool TryDecodeST3_ASISDLSEP_R3_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeST3_ASISDLSEP_R3_R(const InstData &data, Instruction &inst);
 
 // SQRDMULH SQRDMULH_asisdelem_R:
 //   0 x Rd       0

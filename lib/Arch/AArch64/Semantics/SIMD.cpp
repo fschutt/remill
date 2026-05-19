@@ -494,6 +494,26 @@ DEF_ISEL(ADDP_ASIMDSAME_ONLY_2S) = ADDP_32<V64, uint32v2_t>;
 DEF_ISEL(ADDP_ASIMDSAME_ONLY_4S) = ADDP_32<V128, uint32v4_t>;
 DEF_ISEL(ADDP_ASIMDSAME_ONLY_2D) = ADDP_64<V128, uint64v2_t>;
 
+namespace {
+
+// ADDP scalar-pair: sums the two 64-bit lanes of Vn.2D into Dd[0].
+// Only the 2D arrangement is defined by ARM. The destination is a
+// scalar D register (lower 64 bits of a V-reg, upper 64 bits zero).
+DEF_SEM(ADDP_PAIR_64, V128W dst, V128 src) {
+  auto vec = UReadV64(src);
+  auto lane0 = UExtractV64(vec, 0);
+  auto lane1 = UExtractV64(vec, 1);
+  auto sum = UAdd(lane0, lane1);
+  auto out = UClearV64(UReadV64(dst));
+  out = UInsertV64(out, 0, sum);
+  UWriteV64(dst, out);
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(ADDP_ASISDPAIR_ONLY_2D) = ADDP_PAIR_64;
+
 DEF_ISEL(UMINP_ASIMDSAME_ONLY_8B) = UMINP_8<V64, uint8v8_t>;
 DEF_ISEL(UMINP_ASIMDSAME_ONLY_16B) = UMINP_8<V128, uint8v16_t>;
 DEF_ISEL(UMINP_ASIMDSAME_ONLY_4H) = UMINP_16<V64, uint16v4_t>;
