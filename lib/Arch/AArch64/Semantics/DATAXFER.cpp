@@ -1538,6 +1538,24 @@ DEF_ISEL(LD4_ASISDLSEP_R4_R_2D) = LD4_64_POSTINDEX<M64, 2>;
 
 namespace {
 
+// LD1 single-element-to-lane (D form): loads one 64-bit value
+// from memory into lane <idx> of Vt; the other lane is preserved.
+DEF_SEM(LD1_SINGLE_LANE_64, V128W dst, I8 idx, M64 src) {
+  auto cur = UReadV64(dst);
+  auto val = Read(src);
+  auto lane = Read(idx);
+  // Index can only be 0 or 1 for .D form. Insert at lane.
+  auto out = UInsertV64(cur, lane, val);
+  UWriteV64(dst, out);
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(LD1_ASISDLSO_D1_1D) = LD1_SINGLE_LANE_64;
+
+namespace {
+
 #define INS_VEC(size) \
   template <typename T> \
   DEF_SEM(INS_##size, V128W dst, I64 idx, T src) { \

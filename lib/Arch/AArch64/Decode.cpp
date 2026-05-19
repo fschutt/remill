@@ -8056,9 +8056,7 @@ bool TryDecodeLD1_ASISDLSO_S1_1S(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // LD1  { <Vt>.D }[<index>], [<Xn|SP>]
-bool TryDecodeLD1_ASISDLSO_D1_1D(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLD1_ASISDLSO_D1_1D(const InstData &data, Instruction &inst);
 
 // LD1 LD1_asisdlsop_B1_i1b:
 //   0 x Rt       0

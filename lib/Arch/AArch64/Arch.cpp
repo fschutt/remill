@@ -4831,6 +4831,21 @@ bool TryDecodeST4_ASISDLSEP_R4_R(const InstData &data, Instruction &inst) {
   return TryDecodeST2_ASISDLSEP_R2_R(data, inst);
 }
 
+// LD1  { <Vt>.D }[<index>], [<Xn|SP>]
+//
+// Loads a single 64-bit element from memory into lane `index` of
+// Vt; other lanes of Vt are preserved. For .D the index is just
+// the Q bit (0 or 1) — encoded in InstData::Q. We mark the V-reg
+// as kActionWrite (the semantic will UReadV first to preserve
+// the other lane) and add a 64-bit memory read.
+bool TryDecodeLD1_ASISDLSO_D1_1D(const InstData &data, Instruction &inst) {
+  AddArrangementSpecifier(inst, 128, 64);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rt);
+  AddImmOperand(inst, data.Q, kUnsigned, 8);
+  AddBasePlusOffsetMemOp(inst, kActionRead, 64, data.Rn, 0);
+  return true;
+}
+
 // NOT  <Vd>.<T>, <Vn>.<T>
 bool TryDecodeNOT_ASIMDMISC_R(const InstData &data, Instruction &inst) {
   const uint64_t datasize = data.Q ? 128 : 64;
