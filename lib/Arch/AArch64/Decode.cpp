@@ -1124,9 +1124,7 @@ bool TryDecodeFMAX_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FMAX  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFMAX_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFMAX_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // FMIN FMIN_H_floatdp2:
 //   0 x Rd       0
@@ -1352,9 +1350,7 @@ bool TryDecodeFMAXNM_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FMAXNM  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFMAXNM_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFMAXNM_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // FCVTPS FCVTPS_32H_float2int:
 //   0 x Rd       0
@@ -24855,9 +24851,7 @@ bool TryDecodeFMIN_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FMIN  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFMIN_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFMIN_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // SQXTUN SQXTUN_asisdmisc_N:
 //   0 x Rd       0
@@ -39102,9 +39096,7 @@ bool TryDecodeFMINNM_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FMINNM  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFMINNM_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFMINNM_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // UMLSL UMLSL_asimddiff_L:
 //   0 x Rd       0

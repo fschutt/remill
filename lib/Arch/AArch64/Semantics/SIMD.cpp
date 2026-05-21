@@ -461,6 +461,31 @@ MAKE_ZIP(ZIP2_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4,  1)
 MAKE_ZIP(ZIP2_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2,  1)
 #undef MAKE_ZIP
 
+// M12.7: vector FP min/max (FMAX/FMIN/FMAXNM/FMINNM ASIMDSAME) — per-lane FloatMax/
+// FloatMin (the helpers FMAXV/FMINV use). FMAXNM/FMINNM use the same op here (the
+// NaN-propagation distinction doesn't matter for finite layout values). Used by the
+// used-size computation (max(content,min-width), min(content,max-width)).
+#define MAKE_FMINMAX(NAME, CMP, RDV, EXV, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src1, V128 src2) { \
+    auto v1 = RDV(src1); \
+    auto v2 = RDV(src2); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      auto a = EXV(v1, i); \
+      auto b = EXV(v2, i); \
+      res.elems[i] = (a CMP b) ? a : b; \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_FMINMAX(FMAX_VEC_2S, >, FReadV32, FExtractV32, FWriteV32, float32v2_t, 2)
+MAKE_FMINMAX(FMAX_VEC_4S, >, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
+MAKE_FMINMAX(FMAX_VEC_2D, >, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
+MAKE_FMINMAX(FMIN_VEC_2S, <, FReadV32, FExtractV32, FWriteV32, float32v2_t, 2)
+MAKE_FMINMAX(FMIN_VEC_4S, <, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
+MAKE_FMINMAX(FMIN_VEC_2D, <, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
+#undef MAKE_FMINMAX
+
 }  // namespace
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_8B) = CMPEQ_IMM_8<V64, uint8v8_t>;
@@ -544,6 +569,21 @@ DEF_ISEL(ZIP2_ASIMDPERM_ONLY_8H)  = ZIP2_8H;
 DEF_ISEL(ZIP2_ASIMDPERM_ONLY_2S)  = ZIP2_2S;
 DEF_ISEL(ZIP2_ASIMDPERM_ONLY_4S)  = ZIP2_4S;
 DEF_ISEL(ZIP2_ASIMDPERM_ONLY_2D)  = ZIP2_2D;
+
+// M12.7: vector FP min/max (FMAX/FMIN/FMAXNM/FMINNM ASIMDSAME). NM variants reuse the
+// same per-lane FloatMax/FloatMin (NaN distinction irrelevant for finite layout values).
+DEF_ISEL(FMAX_ASIMDSAME_ONLY_2S) = FMAX_VEC_2S;
+DEF_ISEL(FMAX_ASIMDSAME_ONLY_4S) = FMAX_VEC_4S;
+DEF_ISEL(FMAX_ASIMDSAME_ONLY_2D) = FMAX_VEC_2D;
+DEF_ISEL(FMIN_ASIMDSAME_ONLY_2S) = FMIN_VEC_2S;
+DEF_ISEL(FMIN_ASIMDSAME_ONLY_4S) = FMIN_VEC_4S;
+DEF_ISEL(FMIN_ASIMDSAME_ONLY_2D) = FMIN_VEC_2D;
+DEF_ISEL(FMAXNM_ASIMDSAME_ONLY_2S) = FMAX_VEC_2S;
+DEF_ISEL(FMAXNM_ASIMDSAME_ONLY_4S) = FMAX_VEC_4S;
+DEF_ISEL(FMAXNM_ASIMDSAME_ONLY_2D) = FMAX_VEC_2D;
+DEF_ISEL(FMINNM_ASIMDSAME_ONLY_2S) = FMIN_VEC_2S;
+DEF_ISEL(FMINNM_ASIMDSAME_ONLY_4S) = FMIN_VEC_4S;
+DEF_ISEL(FMINNM_ASIMDSAME_ONLY_2D) = FMIN_VEC_2D;
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_4H) = CMPEQ_IMM_16<V64, uint16v4_t>;
 DEF_ISEL(CMLT_ASIMDMISC_Z_4H) = CMPLT_IMM_16<V64, uint16v4_t>;

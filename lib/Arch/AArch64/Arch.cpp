@@ -4399,6 +4399,21 @@ bool TryDecodeZIP2_ASIMDPERM_ONLY(const InstData &data, Instruction &inst) {
   return TryDecodeZIP1_ASIMDPERM_ONLY(data, inst);
 }
 
+// M12.7: vector FP min/max (FMAX/FMIN/FMAXNM/FMINNM ASIMDSAME) — same sz/Q decode as
+// the other FP ASIMDSAME ops.
+bool TryDecodeFMAX_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+bool TryDecodeFMIN_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+bool TryDecodeFMAXNM_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+bool TryDecodeFMINNM_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+
 // UMAXP  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
 bool TryDecodeUMAXP_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
   if (0x3 == data.size) {
