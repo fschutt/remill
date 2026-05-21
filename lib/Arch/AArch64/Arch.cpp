@@ -816,6 +816,29 @@ bool AArch64Arch::ArchDecodeInstruction(uint64_t address,
   inst.next_pc = address + kInstructionSize;
   inst.category = Instruction::kCategoryInvalid;
 
+  // M12.7: normalize FEAT_LRCPC2 unscaled load-acquire / store-release (LDAPUR / STLUR /
+  // LDAPURSx — bits[29:24]=0b011001, bit21=0, bits[11:10]=0b00) to the plain unscaled
+  // LDUR / STUR (bits[29:24]=0b111000). remill has no LRCPC2 decoder; the acquire/release
+  // barrier is a no-op under the single-threaded lifted execution model, and the
+  // (size, opc, imm9, Rn, Rt) fields are bit-identical, so this preserves the load/store.
+  // (azul's text3 FontManager::get_loaded_font_ids uses `ldapur` on an atomic load.)
+  uint8_t az_norm[kInstructionSize];
+  if (kInstructionSize == inst_bytes.size()) {
+    uint32_t w = static_cast<uint32_t>(bytes[0]) |
+                 (static_cast<uint32_t>(bytes[1]) << 8) |
+                 (static_cast<uint32_t>(bytes[2]) << 16) |
+                 (static_cast<uint32_t>(bytes[3]) << 24);
+    if (((w >> 24) & 0x3Fu) == 0x19u && ((w >> 21) & 1u) == 0u &&
+        ((w >> 10) & 3u) == 0u) {
+      w = (w & ~(0x3Fu << 24)) | (0x38u << 24);
+      az_norm[0] = static_cast<uint8_t>(w & 0xFFu);
+      az_norm[1] = static_cast<uint8_t>((w >> 8) & 0xFFu);
+      az_norm[2] = static_cast<uint8_t>((w >> 16) & 0xFFu);
+      az_norm[3] = static_cast<uint8_t>((w >> 24) & 0xFFu);
+      bytes = az_norm;
+    }
+  }
+
   if (kInstructionSize != inst_bytes.size()) {
     inst.category = Instruction::kCategoryInvalid;
     return false;
