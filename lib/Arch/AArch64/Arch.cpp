@@ -4807,6 +4807,29 @@ DEF_LDOP_DECODE(LDEOR)
 DEF_LDOP_DECODE(SWP)
 #undef DEF_LDOP_DECODE
 
+// M12.7: CAS family decoders. CAS Rs, Rt, [Rn] — Rs is read (compare) AND written (old
+// value out), so it's added twice (write first, then read), matching the DEF_SEM arg
+// order (rs_w, mem, rs_r, rt).
+static bool TryDecodeCAS_op(
+    const InstData &data, Instruction &inst, RegClass r_class) {
+  AddRegOperand(inst, kActionWrite, r_class, kUseAsValue, data.Rs);
+  AddBasePlusOffsetMemOp(inst, kActionWrite,
+                         r_class == kRegX ? 64 : 32, data.Rn, 0);
+  AddRegOperand(inst, kActionRead, r_class, kUseAsValue, data.Rs);
+  AddRegOperand(inst, kActionRead, r_class, kUseAsValue, data.Rt);
+  return true;
+}
+#define DEF_CAS_DECODE(BASE) \
+  bool TryDecode##BASE##_C32_LDSTEXCL(const InstData &data, Instruction &inst) { \
+    return TryDecodeCAS_op(data, inst, kRegW); } \
+  bool TryDecode##BASE##_C64_LDSTEXCL(const InstData &data, Instruction &inst) { \
+    return TryDecodeCAS_op(data, inst, kRegX); }
+DEF_CAS_DECODE(CAS)
+DEF_CAS_DECODE(CASA)
+DEF_CAS_DECODE(CASL)
+DEF_CAS_DECODE(CASAL)
+#undef DEF_CAS_DECODE
+
 // INS  <Vd>.<Ts>[<index1>], <Vn>.<Ts>[<index2>]
 //
 // Element-wise vector lane move. Rustc emits this as

@@ -13261,9 +13261,7 @@ bool TryDecodeFRINTP_D_FLOATDP1(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // CASA  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeCASA_C32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeCASA_C32_LDSTEXCL(const InstData &data, Instruction &inst);
 
 // CASAL CASAL_C32_ldstexcl:
 //   0 x Rt       0
@@ -13299,9 +13297,7 @@ bool TryDecodeCASA_C32_LDSTEXCL(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // CASAL  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeCASAL_C32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeCASAL_C32_LDSTEXCL(const InstData &data, Instruction &inst);
 
 // CAS CAS_C32_ldstexcl:
 //   0 x Rt       0
@@ -13337,9 +13333,7 @@ bool TryDecodeCASAL_C32_LDSTEXCL(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // CAS  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeCAS_C32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeCAS_C32_LDSTEXCL(const InstData &data, Instruction &inst);
 
 // CASL CASL_C32_ldstexcl:
 //   0 x Rt       0
@@ -13375,9 +13369,7 @@ bool TryDecodeCAS_C32_LDSTEXCL(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // CASL  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeCASL_C32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeCASL_C32_LDSTEXCL(const InstData &data, Instruction &inst);
 
 // CASA CASA_C64_ldstexcl:
 //   0 x Rt       0
@@ -13413,9 +13405,7 @@ bool TryDecodeCASL_C32_LDSTEXCL(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // CASA  <Xs>, <Xt>, [<Xn|SP>{,#0}]
-bool TryDecodeCASA_C64_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeCASA_C64_LDSTEXCL(const InstData &data, Instruction &inst);
 
 // CASAL CASAL_C64_ldstexcl:
 //   0 x Rt       0
@@ -13451,9 +13441,7 @@ bool TryDecodeCASA_C64_LDSTEXCL(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // CASAL  <Xs>, <Xt>, [<Xn|SP>{,#0}]
-bool TryDecodeCASAL_C64_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeCASAL_C64_LDSTEXCL(const InstData &data, Instruction &inst);
 
 // CAS CAS_C64_ldstexcl:
 //   0 x Rt       0
@@ -13489,9 +13477,7 @@ bool TryDecodeCASAL_C64_LDSTEXCL(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // CAS  <Xs>, <Xt>, [<Xn|SP>{,#0}]
-bool TryDecodeCAS_C64_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeCAS_C64_LDSTEXCL(const InstData &data, Instruction &inst);
 
 // CASL CASL_C64_ldstexcl:
 //   0 x Rt       0
@@ -13527,9 +13513,7 @@ bool TryDecodeCAS_C64_LDSTEXCL(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // CASL  <Xs>, <Xt>, [<Xn|SP>{,#0}]
-bool TryDecodeCASL_C64_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeCASL_C64_LDSTEXCL(const InstData &data, Instruction &inst);
 
 // WFE WFE_HI_system:
 //   0 1 Rt       0

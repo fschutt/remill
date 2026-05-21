@@ -515,6 +515,62 @@ MAKE_LDOP_ALL(LDEOR, old_val ^ rsv)
 MAKE_LDOP_ALL(SWP, rsv)
 #undef MAKE_LDOP_ALL
 
+// M12.7: CAS family (compare-and-swap). CAS Rs, Rt, [Rn]: old = [Rn]; if old == Rs then
+// [Rn] = Rt; Rs = old (always). Decoder operand order: Rs(write), [Rn], Rs(read), Rt(read).
+// A/L/AL add acquire / release / both barriers. (with_memory_fonts uses casl/casa/casal on
+// the Arc weak/strong refcount — still hit a hot gap after the LDSET fix.)
+#define MAKE_CAS_ALL(BASE) \
+  template <int W, typename D, typename M, typename S> \
+  DEF_SEM(BASE##_op, D rs_w, M mem_op, S rs_r, S rt) { \
+    using RW = LDADD_RW<W>; \
+    auto addr = AddressOf(mem_op); \
+    auto old_val = RW::do_read(memory, addr); \
+    if (old_val == static_cast<typename RW::vt>(Read(rs_r))) { \
+      memory = RW::do_write(memory, addr, static_cast<typename RW::vt>(Read(rt))); \
+    } \
+    WriteZExt(rs_w, old_val); \
+    return memory; \
+  } \
+  template <int W, typename D, typename M, typename S> \
+  DEF_SEM(BASE##A_op, D rs_w, M mem_op, S rs_r, S rt) { \
+    using RW = LDADD_RW<W>; \
+    memory = __remill_barrier_load_store(memory); \
+    auto addr = AddressOf(mem_op); \
+    auto old_val = RW::do_read(memory, addr); \
+    if (old_val == static_cast<typename RW::vt>(Read(rs_r))) { \
+      memory = RW::do_write(memory, addr, static_cast<typename RW::vt>(Read(rt))); \
+    } \
+    WriteZExt(rs_w, old_val); \
+    return memory; \
+  } \
+  template <int W, typename D, typename M, typename S> \
+  DEF_SEM(BASE##L_op, D rs_w, M mem_op, S rs_r, S rt) { \
+    using RW = LDADD_RW<W>; \
+    auto addr = AddressOf(mem_op); \
+    auto old_val = RW::do_read(memory, addr); \
+    if (old_val == static_cast<typename RW::vt>(Read(rs_r))) { \
+      memory = RW::do_write(memory, addr, static_cast<typename RW::vt>(Read(rt))); \
+    } \
+    WriteZExt(rs_w, old_val); \
+    memory = __remill_barrier_store_store(memory); \
+    return memory; \
+  } \
+  template <int W, typename D, typename M, typename S> \
+  DEF_SEM(BASE##AL_op, D rs_w, M mem_op, S rs_r, S rt) { \
+    using RW = LDADD_RW<W>; \
+    memory = __remill_barrier_load_store(memory); \
+    auto addr = AddressOf(mem_op); \
+    auto old_val = RW::do_read(memory, addr); \
+    if (old_val == static_cast<typename RW::vt>(Read(rs_r))) { \
+      memory = RW::do_write(memory, addr, static_cast<typename RW::vt>(Read(rt))); \
+    } \
+    WriteZExt(rs_w, old_val); \
+    memory = __remill_barrier_store_store(memory); \
+    return memory; \
+  }
+MAKE_CAS_ALL(CAS)
+#undef MAKE_CAS_ALL
+
 }  // namespace
 
 DEF_ISEL(LDADD_32_MEMOP) = LDADD_op<32, R32W, M32W, R32>;
@@ -541,6 +597,16 @@ DEF_LDOP_ISEL(LDCLR)
 DEF_LDOP_ISEL(LDEOR)
 DEF_LDOP_ISEL(SWP)
 #undef DEF_LDOP_ISEL
+
+// M12.7: CAS family ISELs.
+#define DEF_CAS_ISEL(BASE) \
+  DEF_ISEL(BASE##_C32_LDSTEXCL) = BASE##_op<32, R32W, M32W, R32>; \
+  DEF_ISEL(BASE##_C64_LDSTEXCL) = BASE##_op<64, R64W, M64W, R64>;
+DEF_CAS_ISEL(CAS)
+DEF_CAS_ISEL(CASA)
+DEF_CAS_ISEL(CASL)
+DEF_CAS_ISEL(CASAL)
+#undef DEF_CAS_ISEL
 
 // LDAR is defined later via the existing LoadAcquire template;
 // only STLR_SL64 was missing.
