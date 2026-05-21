@@ -429,6 +429,38 @@ MAKE_DUP_ELT(DUP_ELT_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4)
 MAKE_DUP_ELT(DUP_ELT_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2)
 #undef MAKE_DUP_ELT
 
+// M12.7: ZIP1/ZIP2 (ASIMDPERM) — interleave the low (ZIP1) or high (ZIP2) halves of
+// two vectors: res[2i]=src1[base+i], res[2i+1]=src2[base+i], base = HI ? n/2 : 0.
+#define MAKE_ZIP(NAME, RDV, EXV, WRV, DV, NL, HI) \
+  DEF_SEM(NAME, V128W dst, V128 src1, V128 src2) { \
+    auto v1 = RDV(src1); \
+    auto v2 = RDV(src2); \
+    DV res = {}; \
+    const size_t half = (NL) / 2; \
+    const size_t base = (HI) ? half : 0; \
+    _Pragma("unroll") for (size_t i = 0; i < half; ++i) { \
+      res.elems[2 * i] = EXV(v1, base + i); \
+      res.elems[2 * i + 1] = EXV(v2, base + i); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_ZIP(ZIP1_8B,  UReadV8,  UExtractV8,  UWriteV8,  uint8v8_t,   8,  0)
+MAKE_ZIP(ZIP1_16B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t,  16, 0)
+MAKE_ZIP(ZIP1_4H,  UReadV16, UExtractV16, UWriteV16, uint16v4_t,  4,  0)
+MAKE_ZIP(ZIP1_8H,  UReadV16, UExtractV16, UWriteV16, uint16v8_t,  8,  0)
+MAKE_ZIP(ZIP1_2S,  UReadV32, UExtractV32, UWriteV32, uint32v2_t,  2,  0)
+MAKE_ZIP(ZIP1_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4,  0)
+MAKE_ZIP(ZIP1_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2,  0)
+MAKE_ZIP(ZIP2_8B,  UReadV8,  UExtractV8,  UWriteV8,  uint8v8_t,   8,  1)
+MAKE_ZIP(ZIP2_16B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t,  16, 1)
+MAKE_ZIP(ZIP2_4H,  UReadV16, UExtractV16, UWriteV16, uint16v4_t,  4,  1)
+MAKE_ZIP(ZIP2_8H,  UReadV16, UExtractV16, UWriteV16, uint16v8_t,  8,  1)
+MAKE_ZIP(ZIP2_2S,  UReadV32, UExtractV32, UWriteV32, uint32v2_t,  2,  1)
+MAKE_ZIP(ZIP2_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4,  1)
+MAKE_ZIP(ZIP2_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2,  1)
+#undef MAKE_ZIP
+
 }  // namespace
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_8B) = CMPEQ_IMM_8<V64, uint8v8_t>;
@@ -496,6 +528,22 @@ DEF_ISEL(DUP_ASIMDINS_DV_V_8H)  = DUP_ELT_8H;
 DEF_ISEL(DUP_ASIMDINS_DV_V_2S)  = DUP_ELT_2S;
 DEF_ISEL(DUP_ASIMDINS_DV_V_4S)  = DUP_ELT_4S;
 DEF_ISEL(DUP_ASIMDINS_DV_V_2D)  = DUP_ELT_2D;
+
+// M12.7: ZIP1/ZIP2 (ASIMDPERM), all arrangements.
+DEF_ISEL(ZIP1_ASIMDPERM_ONLY_8B)  = ZIP1_8B;
+DEF_ISEL(ZIP1_ASIMDPERM_ONLY_16B) = ZIP1_16B;
+DEF_ISEL(ZIP1_ASIMDPERM_ONLY_4H)  = ZIP1_4H;
+DEF_ISEL(ZIP1_ASIMDPERM_ONLY_8H)  = ZIP1_8H;
+DEF_ISEL(ZIP1_ASIMDPERM_ONLY_2S)  = ZIP1_2S;
+DEF_ISEL(ZIP1_ASIMDPERM_ONLY_4S)  = ZIP1_4S;
+DEF_ISEL(ZIP1_ASIMDPERM_ONLY_2D)  = ZIP1_2D;
+DEF_ISEL(ZIP2_ASIMDPERM_ONLY_8B)  = ZIP2_8B;
+DEF_ISEL(ZIP2_ASIMDPERM_ONLY_16B) = ZIP2_16B;
+DEF_ISEL(ZIP2_ASIMDPERM_ONLY_4H)  = ZIP2_4H;
+DEF_ISEL(ZIP2_ASIMDPERM_ONLY_8H)  = ZIP2_8H;
+DEF_ISEL(ZIP2_ASIMDPERM_ONLY_2S)  = ZIP2_2S;
+DEF_ISEL(ZIP2_ASIMDPERM_ONLY_4S)  = ZIP2_4S;
+DEF_ISEL(ZIP2_ASIMDPERM_ONLY_2D)  = ZIP2_2D;
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_4H) = CMPEQ_IMM_16<V64, uint16v4_t>;
 DEF_ISEL(CMLT_ASIMDMISC_Z_4H) = CMPLT_IMM_16<V64, uint16v4_t>;

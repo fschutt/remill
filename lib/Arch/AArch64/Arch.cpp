@@ -4384,6 +4384,21 @@ bool TryDecodeDUP_ASIMDINS_DV_V(const InstData &data, Instruction &inst) {
   return true;
 }
 
+// M12.7: ZIP1/ZIP2 (ASIMDPERM) — interleave halves of two vectors. Shared decode.
+bool TryDecodeZIP1_ASIMDPERM_ONLY(const InstData &data, Instruction &inst) {
+  if (data.size == 3 && !data.Q) {
+    return false;  // 64-bit elements (.2D) require Q==1
+  }
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 8ULL << data.size);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rm);
+  return true;
+}
+bool TryDecodeZIP2_ASIMDPERM_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeZIP1_ASIMDPERM_ONLY(data, inst);
+}
+
 // UMAXP  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
 bool TryDecodeUMAXP_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
   if (0x3 == data.size) {

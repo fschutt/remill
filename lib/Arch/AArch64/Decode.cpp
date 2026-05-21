@@ -9226,9 +9226,7 @@ bool TryDecodeBFXIL_BFM_64M_BITFIELD(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ZIP1  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeZIP1_ASIMDPERM_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeZIP1_ASIMDPERM_ONLY(const InstData &data, Instruction &inst);
 
 // LDSETAH LDSETAH_32_memop:
 //   0 x Rt       0
@@ -17720,9 +17718,7 @@ bool TryDecodeSMULL_SMADDL_64WA_DP_3SRC(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ZIP2  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeZIP2_ASIMDPERM_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeZIP2_ASIMDPERM_ONLY(const InstData &data, Instruction &inst);
 
 // LDAXRB LDAXRB_LR32_ldstexcl:
 //   0 x Rt       0
