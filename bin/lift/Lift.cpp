@@ -139,6 +139,60 @@ struct SimpleTraceManager : remill::TraceManager {
         memory(memory),
         entry(entry) {}
 
+  // M12.7: jump-table devirtualization for `br Xn` (a `match` lowered to a
+  // PC-relative jump table). The arm targets are intra-fn instructions; the
+  // lifted IR computes the target correctly but `br Xn` would otherwise become
+  // the no-op __remill_jump. Provide every 4-byte-aligned address in the
+  // lifted fn's byte range as a candidate; TraceLifter switches the computed
+  // target PC over them. Jumps only (indirect CALLs go to other fns).
+  void ForEachDevirtualizedTarget(
+      const remill::Instruction &inst,
+      std::function<void(uint64_t, remill::DevirtualizedTargetKind)> func)
+      override {
+    if (inst.category != remill::Instruction::kCategoryIndirectJump ||
+        memory.empty() || inst.pc < 4) {
+      return;
+    }
+    // Only devirt the COMPILER JUMP-TABLE pattern: `br Xn` immediately preceded
+    // by `add Xn, Xn, Xm, lsl #2` (the table-target computation). Skip every
+    // other indirect jump (e.g. a bytecode interpreter's fn-ptr `br` dispatch),
+    // which would otherwise sweep a huge window and blow up the lifted IR.
+    bool is_jumptable = false;
+    for (int k = 1; k <= 5 && inst.pc >= static_cast<uint64_t>(4 * k); k++) {
+      uint32_t w = 0;
+      bool got = true;
+      for (int i = 0; i < 4; i++) {
+        auto it = memory.find(inst.pc - 4 * k + static_cast<uint64_t>(i));
+        if (it == memory.end()) { got = false; break; }
+        w |= static_cast<uint32_t>(it->second) << (8 * i);
+      }
+      if (got && (w >> 24) == 0x8Bu && ((w >> 10) & 0x3Fu) == 2u) {
+        is_jumptable = true;  // `add Xd, Xn, Xm, lsl #2`
+        break;
+      }
+    }
+    if (!is_jumptable) {
+      return;
+    }
+    // Skip devirt for very large fns (e.g. the TrueType hinting bytecode
+    // interpreter, which has many dispatch jump tables) — sweeping them blows up
+    // the lifted IR, and they aren't needed for the bare-body layout (their `br`
+    // stays the harmless no-op __remill_jump, as before the devirt).
+    if (memory.rbegin()->first - memory.begin()->first > 12288) {
+      return;
+    }
+    // Bound to a window around the jump (arms are near the dispatch) so we don't
+    // sweep the whole fn for every indirect jump (that blows up the lifted IR).
+    const uint64_t mlo = memory.begin()->first & ~uint64_t(3);
+    const uint64_t mhi = memory.rbegin()->first;
+    const uint64_t lo =
+        (inst.pc > mlo + 256) ? ((inst.pc - 256) & ~uint64_t(3)) : mlo;
+    const uint64_t hi = (inst.pc + 2048 < mhi) ? (inst.pc + 2048) : mhi;
+    for (uint64_t a = lo; a <= hi; a += 4) {
+      func(a, remill::DevirtualizedTargetKind::kTraceLocal);
+    }
+  }
+
   // Called when we have lifted, i.e. defined the contents, of a new trace.
   // The derived class is expected to do something useful with this.
   void SetLiftedTraceDefinition(uint64_t addr,

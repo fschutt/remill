@@ -407,7 +407,35 @@ bool TraceLifter::Impl::Lift(
 
         case Instruction::kCategoryIndirectJump: {
           try_add_delay_slot(true, block);
-          AddTerminatingTailCall(block, intrinsics->jump, *intrinsics);
+          // M12.7: jump-table devirtualization. Collect intra-fn targets from the
+          // TraceManager (ForEachDevirtualizedTarget) and `switch` the computed
+          // target PC (NEXT_PC) over them, so a `match` lowered to `br Xn`
+          // dispatches correctly instead of falling into the no-op __remill_jump.
+          // Out-of-fn / unprovided targets hit the default → __remill_jump (the
+          // old behavior, no regression).
+          std::vector<uint64_t> devirt_targets;
+          manager.ForEachDevirtualizedTarget(
+              inst, [&](uint64_t target_pc, DevirtualizedTargetKind) {
+                devirt_targets.push_back(target_pc);
+              });
+          if (devirt_targets.empty()) {
+            AddTerminatingTailCall(block, intrinsics->jump, *intrinsics);
+          } else {
+            const auto next_pc = LoadNextProgramCounter(block, *intrinsics);
+            const auto default_block =
+                llvm::BasicBlock::Create(context, "", func);
+            AddTerminatingTailCall(default_block, intrinsics->jump, *intrinsics);
+            const auto sw = llvm::SwitchInst::Create(
+                next_pc, default_block,
+                static_cast<unsigned>(devirt_targets.size()), block);
+            for (auto target_pc : devirt_targets) {
+              inst_work_list.insert(target_pc);
+              sw->addCase(llvm::ConstantInt::get(
+                              llvm::cast<llvm::IntegerType>(word_type),
+                              target_pc),
+                          GetOrCreateBlock(target_pc));
+            }
+          }
           break;
         }
 
