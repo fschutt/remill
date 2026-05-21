@@ -4324,6 +4324,66 @@ bool TryDecodeUSHLL_ASIMDSHF_L(const InstData &data, Instruction &inst) {
   return TryDecodeSSHLL_ASIMDSHF_L(data, inst);
 }
 
+// M12.7: vector FP arith (FADD/FSUB/FMUL/FDIV ASIMDSAME). sz = data.size&1 (f32/f64),
+// Q selects lane count. Operands are full V regs (kRegV) to match the V128 DEF_SEMs.
+static bool TryDecodeFP_ASIMDSAME_3(const InstData &data, Instruction &inst) {
+  const uint64_t sz = data.size & 1ULL;  // bit 22: 0=f32, 1=f64
+  if (sz && !data.Q) {
+    return false;  // 64-bit elements require Q==1 (.2D)
+  }
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 32ULL << sz);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rm);
+  return true;
+}
+bool TryDecodeFADD_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+bool TryDecodeFSUB_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+bool TryDecodeFMUL_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+bool TryDecodeFDIV_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+
+// M12.7: vector int->float convert (SCVTF/UCVTF ASIMDMISC).
+static bool TryDecodeCVTF_ASIMDMISC(const InstData &data, Instruction &inst) {
+  const uint64_t sz = data.size & 1ULL;
+  if (sz && !data.Q) {
+    return false;
+  }
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 32ULL << sz);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  return true;
+}
+bool TryDecodeSCVTF_ASIMDMISC_R(const InstData &data, Instruction &inst) {
+  return TryDecodeCVTF_ASIMDMISC(data, inst);
+}
+bool TryDecodeUCVTF_ASIMDMISC_R(const InstData &data, Instruction &inst) {
+  return TryDecodeCVTF_ASIMDMISC(data, inst);
+}
+
+// M12.7: DUP element (DUP_ASIMDINS_DV_V) — broadcast Vn.<Ts>[index] to all lanes.
+bool TryDecodeDUP_ASIMDINS_DV_V(const InstData &data, Instruction &inst) {
+  uint64_t size = 0;
+  if (!LeastSignificantSetBit(data.imm5.uimm, &size) || size > 3) {
+    return false;
+  } else if (size == 3 && !data.Q) {
+    return false;  // 64-bit element requires Q==1 (.2D)
+  }
+  const uint64_t index = data.imm5.uimm >> (size + 1);
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 8ULL << size);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddImmOperand(inst, index);
+  return true;
+}
+
 // UMAXP  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
 bool TryDecodeUMAXP_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
   if (0x3 == data.size) {

@@ -3438,9 +3438,7 @@ bool TryDecodeUCVTF_ASIMDMISCFP16_R(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // UCVTF  <Vd>.<T>, <Vn>.<T>
-bool TryDecodeUCVTF_ASIMDMISC_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeUCVTF_ASIMDMISC_R(const InstData &data, Instruction &inst);
 
 // SQDMULH SQDMULH_asisdsame_only:
 //   0 x Rd       0
@@ -5244,9 +5242,7 @@ bool TryDecodeFSUB_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FSUB  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFSUB_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFSUB_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // SHLL SHLL_asimdmisc_S:
 //   0 x Rd       0
@@ -17386,9 +17382,7 @@ bool TryDecodeSCVTF_ASIMDMISCFP16_R(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // SCVTF  <Vd>.<T>, <Vn>.<T>
-bool TryDecodeSCVTF_ASIMDMISC_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSCVTF_ASIMDMISC_R(const InstData &data, Instruction &inst);
 
 // UMULL UMULL_asimddiff_L:
 //   0 x Rd       0
@@ -17500,9 +17494,7 @@ bool TryDecodeFMUL_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FMUL  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFMUL_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFMUL_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // FMLA FMLA_asimdsamefp16_only:
 //   0 x Rd       0
@@ -21144,9 +21136,7 @@ bool TryDecodeDUP_ASISDONE_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // DUP  <Vd>.<T>, <Vn>.<Ts>[<index>]
-bool TryDecodeDUP_ASIMDINS_DV_V(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeDUP_ASIMDINS_DV_V(const InstData &data, Instruction &inst);
 
 // STLRH STLRH_SL32_ldstexcl:
 //   0 x Rt       0
@@ -36461,9 +36451,7 @@ bool TryDecodeFADD_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FADD  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFADD_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFADD_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // SQRDMLAH SQRDMLAH_asisdsame2_only:
 //   0 x Rd       0
@@ -40138,9 +40126,7 @@ bool TryDecodeFDIV_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FDIV  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFDIV_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFDIV_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // FRECPE FRECPE_asisdmiscfp16_R:
 //   0 x Rd       0

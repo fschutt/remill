@@ -362,6 +362,73 @@ MAKE_SHLL_SEM(USHLL2_2D, UReadV32, UExtractV32, ZExtTo, uint64_t, uint64v2_t, UW
 
 #undef MAKE_SHLL_SEM
 
+// M12.7: vector FP arithmetic (FADD/FSUB/FMUL/FDIV ASIMDSAME) — per-lane, modeled on
+// the scalar FADD_Scalar32 (BINARY.cpp): CheckedFloatBinOp(state, FAdd32, a, b). The
+// layout positioning is FP-vector-heavy (sshll i16->i32, scvtf i32->f32, fmul/fadd).
+#define MAKE_FP_VEC(NAME, FOP, RDV, EXV, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src1, V128 src2) { \
+    auto v1 = RDV(src1); \
+    auto v2 = RDV(src2); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = CheckedFloatBinOp(state, FOP, EXV(v1, i), EXV(v2, i)); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_FP_VEC(FADD_VEC_2S, FAdd32, FReadV32, FExtractV32, FWriteV32, float32v2_t, 2)
+MAKE_FP_VEC(FADD_VEC_4S, FAdd32, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
+MAKE_FP_VEC(FADD_VEC_2D, FAdd64, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
+MAKE_FP_VEC(FSUB_VEC_2S, FSub32, FReadV32, FExtractV32, FWriteV32, float32v2_t, 2)
+MAKE_FP_VEC(FSUB_VEC_4S, FSub32, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
+MAKE_FP_VEC(FSUB_VEC_2D, FSub64, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
+MAKE_FP_VEC(FMUL_VEC_2S, FMul32, FReadV32, FExtractV32, FWriteV32, float32v2_t, 2)
+MAKE_FP_VEC(FMUL_VEC_4S, FMul32, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
+MAKE_FP_VEC(FMUL_VEC_2D, FMul64, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
+MAKE_FP_VEC(FDIV_VEC_2S, FDiv32, FReadV32, FExtractV32, FWriteV32, float32v2_t, 2)
+MAKE_FP_VEC(FDIV_VEC_4S, FDiv32, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
+MAKE_FP_VEC(FDIV_VEC_2D, FDiv64, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
+#undef MAKE_FP_VEC
+
+// M12.7: vector int->float convert (SCVTF/UCVTF ASIMDMISC) — per-lane CheckedCast,
+// modeled on the scalar UCVTF_UInt32ToFloat32 (CONVERT.cpp).
+#define MAKE_CVTF_VEC(NAME, RDV, EXV, SRCT, DSTT, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src) { \
+    auto v = RDV(src); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = CheckedCast<SRCT, DSTT>(state, EXV(v, i)); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_CVTF_VEC(SCVTF_VEC_2S, SReadV32, SExtractV32, int32_t, float32_t, FWriteV32, float32v2_t, 2)
+MAKE_CVTF_VEC(SCVTF_VEC_4S, SReadV32, SExtractV32, int32_t, float32_t, FWriteV32, float32v4_t, 4)
+MAKE_CVTF_VEC(SCVTF_VEC_2D, SReadV64, SExtractV64, int64_t, float64_t, FWriteV64, float64v2_t, 2)
+MAKE_CVTF_VEC(UCVTF_VEC_2S, UReadV32, UExtractV32, uint32_t, float32_t, FWriteV32, float32v2_t, 2)
+MAKE_CVTF_VEC(UCVTF_VEC_4S, UReadV32, UExtractV32, uint32_t, float32_t, FWriteV32, float32v4_t, 4)
+MAKE_CVTF_VEC(UCVTF_VEC_2D, UReadV64, UExtractV64, uint64_t, float64_t, FWriteV64, float64v2_t, 2)
+#undef MAKE_CVTF_VEC
+
+// M12.7: DUP element (DUP_ASIMDINS_DV_V) — broadcast lane[index] to all lanes.
+#define MAKE_DUP_ELT(NAME, RDV, EXV, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src, I64 index) { \
+    auto v = RDV(src); \
+    auto val = EXV(v, Read(index)); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { res.elems[i] = val; } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_DUP_ELT(DUP_ELT_8B,  UReadV8,  UExtractV8,  UWriteV8,  uint8v8_t,   8)
+MAKE_DUP_ELT(DUP_ELT_16B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t,  16)
+MAKE_DUP_ELT(DUP_ELT_4H,  UReadV16, UExtractV16, UWriteV16, uint16v4_t,  4)
+MAKE_DUP_ELT(DUP_ELT_8H,  UReadV16, UExtractV16, UWriteV16, uint16v8_t,  8)
+MAKE_DUP_ELT(DUP_ELT_2S,  UReadV32, UExtractV32, UWriteV32, uint32v2_t,  2)
+MAKE_DUP_ELT(DUP_ELT_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4)
+MAKE_DUP_ELT(DUP_ELT_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2)
+#undef MAKE_DUP_ELT
+
 }  // namespace
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_8B) = CMPEQ_IMM_8<V64, uint8v8_t>;
@@ -398,6 +465,37 @@ DEF_ISEL(USHLL_ASIMDSHF_L_2D) = USHLL_2D;
 DEF_ISEL(USHLL_ASIMDSHF_L_8H_2) = USHLL2_8H;
 DEF_ISEL(USHLL_ASIMDSHF_L_4S_2) = USHLL2_4S;
 DEF_ISEL(USHLL_ASIMDSHF_L_2D_2) = USHLL2_2D;
+
+// M12.7: vector FP arith (FADD/FSUB/FMUL/FDIV ASIMDSAME).
+DEF_ISEL(FADD_ASIMDSAME_ONLY_2S) = FADD_VEC_2S;
+DEF_ISEL(FADD_ASIMDSAME_ONLY_4S) = FADD_VEC_4S;
+DEF_ISEL(FADD_ASIMDSAME_ONLY_2D) = FADD_VEC_2D;
+DEF_ISEL(FSUB_ASIMDSAME_ONLY_2S) = FSUB_VEC_2S;
+DEF_ISEL(FSUB_ASIMDSAME_ONLY_4S) = FSUB_VEC_4S;
+DEF_ISEL(FSUB_ASIMDSAME_ONLY_2D) = FSUB_VEC_2D;
+DEF_ISEL(FMUL_ASIMDSAME_ONLY_2S) = FMUL_VEC_2S;
+DEF_ISEL(FMUL_ASIMDSAME_ONLY_4S) = FMUL_VEC_4S;
+DEF_ISEL(FMUL_ASIMDSAME_ONLY_2D) = FMUL_VEC_2D;
+DEF_ISEL(FDIV_ASIMDSAME_ONLY_2S) = FDIV_VEC_2S;
+DEF_ISEL(FDIV_ASIMDSAME_ONLY_4S) = FDIV_VEC_4S;
+DEF_ISEL(FDIV_ASIMDSAME_ONLY_2D) = FDIV_VEC_2D;
+
+// M12.7: vector int->float convert (SCVTF/UCVTF ASIMDMISC).
+DEF_ISEL(SCVTF_ASIMDMISC_R_2S) = SCVTF_VEC_2S;
+DEF_ISEL(SCVTF_ASIMDMISC_R_4S) = SCVTF_VEC_4S;
+DEF_ISEL(SCVTF_ASIMDMISC_R_2D) = SCVTF_VEC_2D;
+DEF_ISEL(UCVTF_ASIMDMISC_R_2S) = UCVTF_VEC_2S;
+DEF_ISEL(UCVTF_ASIMDMISC_R_4S) = UCVTF_VEC_4S;
+DEF_ISEL(UCVTF_ASIMDMISC_R_2D) = UCVTF_VEC_2D;
+
+// M12.7: DUP element (DUP_ASIMDINS_DV_V), all arrangements.
+DEF_ISEL(DUP_ASIMDINS_DV_V_8B)  = DUP_ELT_8B;
+DEF_ISEL(DUP_ASIMDINS_DV_V_16B) = DUP_ELT_16B;
+DEF_ISEL(DUP_ASIMDINS_DV_V_4H)  = DUP_ELT_4H;
+DEF_ISEL(DUP_ASIMDINS_DV_V_8H)  = DUP_ELT_8H;
+DEF_ISEL(DUP_ASIMDINS_DV_V_2S)  = DUP_ELT_2S;
+DEF_ISEL(DUP_ASIMDINS_DV_V_4S)  = DUP_ELT_4S;
+DEF_ISEL(DUP_ASIMDINS_DV_V_2D)  = DUP_ELT_2D;
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_4H) = CMPEQ_IMM_16<V64, uint16v4_t>;
 DEF_ISEL(CMLT_ASIMDMISC_Z_4H) = CMPLT_IMM_16<V64, uint16v4_t>;
