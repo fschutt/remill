@@ -305,6 +305,31 @@ MAKE_CMP_BROADCAST(CMPGE_IMM, S, CmpGte, 64)
 
 #undef MAKE_CMP_BROADCAST
 
+// M12.7: SHL (Advanced SIMD shift left by immediate) — per-lane left shift by a
+// broadcast immediate. Modeled on MAKE_CMP_BROADCAST above. Was unimplemented
+// (TryDecodeSHL_ASIMDSHF_R stubbed) → __remill_error → the lifted layout solver
+// diverged (the Rust auto-vectorizer emits `shl.8b` in is_normal()'s bool reduction).
+#define MAKE_SHL_BROADCAST(size) \
+  template <typename S, typename V> \
+  DEF_SEM(SHL_IMM_##size, V128W dst, S src1, I64 imm) { \
+    auto vec1 = UReadV##size(src1); \
+    auto shift_amt = static_cast<uint##size##_t>(Read(imm)); \
+    V res = {}; \
+    _Pragma("unroll") for (size_t i = 0, max_i = NumVectorElems(res); \
+                           i < max_i; ++i) { \
+      res.elems[i] = UShl(UExtractV##size(vec1, i), shift_amt); \
+    } \
+    UWriteV##size(dst, res); \
+    return memory; \
+  }
+
+MAKE_SHL_BROADCAST(8)
+MAKE_SHL_BROADCAST(16)
+MAKE_SHL_BROADCAST(32)
+MAKE_SHL_BROADCAST(64)
+
+#undef MAKE_SHL_BROADCAST
+
 }  // namespace
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_8B) = CMPEQ_IMM_8<V64, uint8v8_t>;
@@ -318,6 +343,15 @@ DEF_ISEL(CMLT_ASIMDMISC_Z_16B) = CMPLT_IMM_8<V128, uint8v16_t>;
 DEF_ISEL(CMLE_ASIMDMISC_Z_16B) = CMPLE_IMM_8<V128, uint8v16_t>;
 DEF_ISEL(CMGT_ASIMDMISC_Z_16B) = CMPGT_IMM_8<V128, uint8v16_t>;
 DEF_ISEL(CMGE_ASIMDMISC_Z_16B) = CMPGE_IMM_8<V128, uint8v16_t>;
+
+// M12.7: SHL (ASIMD shift left by immediate), all arrangements.
+DEF_ISEL(SHL_ASIMDSHF_R_8B) = SHL_IMM_8<V64, uint8v8_t>;
+DEF_ISEL(SHL_ASIMDSHF_R_16B) = SHL_IMM_8<V128, uint8v16_t>;
+DEF_ISEL(SHL_ASIMDSHF_R_4H) = SHL_IMM_16<V64, uint16v4_t>;
+DEF_ISEL(SHL_ASIMDSHF_R_8H) = SHL_IMM_16<V128, uint16v8_t>;
+DEF_ISEL(SHL_ASIMDSHF_R_2S) = SHL_IMM_32<V64, uint32v2_t>;
+DEF_ISEL(SHL_ASIMDSHF_R_4S) = SHL_IMM_32<V128, uint32v4_t>;
+DEF_ISEL(SHL_ASIMDSHF_R_2D) = SHL_IMM_64<V128, uint64v2_t>;
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_4H) = CMPEQ_IMM_16<V64, uint16v4_t>;
 DEF_ISEL(CMLT_ASIMDMISC_Z_4H) = CMPLT_IMM_16<V64, uint16v4_t>;

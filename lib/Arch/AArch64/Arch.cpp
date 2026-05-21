@@ -4256,6 +4256,38 @@ bool TryDecodeADDP_ASISDPAIR_ONLY(const InstData &data, Instruction &inst) {
   return true;
 }
 
+// SHL  <Vd>.<T>, <Vn>.<T>, #<shift>   (ASIMD shift left by immediate)
+// M12.7: the Rust auto-vectorizer emits this (e.g. StyledNodeState::is_normal()'s
+// `shl.8b v,v,#7; cmlt.8b; umaxv` bool reduction); it was stubbed `return false` in
+// Decode.cpp → __remill_error → the lifted layout solver diverged. esize comes from
+// immh, and shift = UInt(immh:immb) - esize (ARM A64 "Advanced SIMD shift by imm").
+bool TryDecodeSHL_ASIMDSHF_R(const InstData &data, Instruction &inst) {
+  if (!data.immh.uimm) {
+    return false;  // immh==0000 is not this (modified-immediate) encoding.
+  }
+  uint64_t highest = 0;
+  if (data.immh.uimm & 0x8) {
+    highest = 3;
+  } else if (data.immh.uimm & 0x4) {
+    highest = 2;
+  } else if (data.immh.uimm & 0x2) {
+    highest = 1;
+  } else {
+    highest = 0;
+  }
+  if (highest == 3 && !data.Q) {
+    return false;  // 64-bit elements (.2D) require Q==1.
+  }
+  const uint64_t esize = 8ULL << highest;
+  const uint64_t immhb = (data.immh.uimm << 3) | data.immb.uimm;
+  const uint64_t shift = immhb - esize;  // left-shift amount, 0..esize-1
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, esize);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddImmOperand(inst, shift);
+  return true;
+}
+
 // UMAXP  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
 bool TryDecodeUMAXP_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
   if (0x3 == data.size) {

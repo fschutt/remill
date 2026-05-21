@@ -22323,10 +22323,11 @@ bool TryDecodeSHL_ASISDSHF_R(const InstData &, Instruction &) {
 //  29 0 U        0
 //  30 x Q        0
 //  31 0
-// SHL  <Vd>.<T>, <Vn>.<T>, #<shift>
-bool TryDecodeSHL_ASIMDSHF_R(const InstData &, Instruction &) {
-  return false;
-}
+// SHL  <Vd>.<T>, <Vn>.<T>, #<shift>   (ASIMD shift left by immediate)
+// M12.7: implemented in Arch.cpp (where AddArrangementSpecifier / AddRegOperand /
+// AddImmOperand live). Was stubbed `return false` → __remill_error → the lifted
+// layout solver diverged (the Rust auto-vectorizer emits `shl.8b` in is_normal()).
+extern bool TryDecodeSHL_ASIMDSHF_R(const InstData &data, Instruction &inst);
 
 // STADDB STADDB_32S_memop:
 //   0 1 Rt       0
