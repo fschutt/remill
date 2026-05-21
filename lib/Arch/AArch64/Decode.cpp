@@ -7599,10 +7599,8 @@ bool TryDecodeLDLAR_LR64_LDSTEXCL(const InstData &, Instruction &) {
 //  29 0 U        0
 //  30 x Q        0
 //  31 0
-// SSHLL{2}  <Vd>.<Ta>, <Vn>.<Tb>, #<shift>
-bool TryDecodeSSHLL_ASIMDSHF_L(const InstData &, Instruction &) {
-  return false;
-}
+// SSHLL{2}  <Vd>.<Ta>, <Vn>.<Tb>, #<shift>   (M12.7: impl in Arch.cpp)
+extern bool TryDecodeSSHLL_ASIMDSHF_L(const InstData &data, Instruction &inst);
 
 // STCLRB STCLRB_32S_memop:
 //   0 1 Rt       0
@@ -39195,10 +39193,8 @@ bool TryDecodeUMLSL_ASIMDDIFF_L(const InstData &, Instruction &) {
 //  29 1 U        0
 //  30 x Q        0
 //  31 0
-// USHLL{2}  <Vd>.<Ta>, <Vn>.<Tb>, #<shift>
-bool TryDecodeUSHLL_ASIMDSHF_L(const InstData &, Instruction &) {
-  return false;
-}
+// USHLL{2}  <Vd>.<Ta>, <Vn>.<Tb>, #<shift>   (M12.7: impl in Arch.cpp)
+extern bool TryDecodeUSHLL_ASIMDSHF_L(const InstData &data, Instruction &inst);
 
 // STLR STLR_SL64_ldstexcl:
 //   0 x Rt       0

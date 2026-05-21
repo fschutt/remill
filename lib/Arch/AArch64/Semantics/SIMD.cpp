@@ -330,6 +330,38 @@ MAKE_SHL_BROADCAST(64)
 
 #undef MAKE_SHL_BROADCAST
 
+// M12.7: SSHLL/USHLL (Advanced SIMD shift-left-long by immediate). Widen each narrow
+// lane to 2x width (S=sign / U=zero extend), then shift left by the immediate. The L
+// (Q=0) form takes the LOW half of Vn; the "2" (Q=1) form takes the HIGH half. The Rust
+// auto-vectorizer emits `sshll.4s v,v,#0` (i16->i32 sign-extend-widen) in the layout
+// positioning pass; it was unimplemented (TryDecode... stubbed) -> __remill_error.
+#define MAKE_SHLL_SEM(NAME, RDV, EXV, EXT, ELEMW, WIDEV, WRV, NL, HB) \
+  DEF_SEM(NAME, V128W dst, V128 src, I64 imm) { \
+    auto vec = RDV(src); \
+    auto sh = Read(imm); \
+    WIDEV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = static_cast<ELEMW>(EXT<ELEMW>(EXV(vec, (HB) + i)) << sh); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+
+MAKE_SHLL_SEM(SSHLL_8H,  SReadV8,  SExtractV8,  SExtTo, int16_t, int16v8_t, SWriteV16, 8, 0)
+MAKE_SHLL_SEM(SSHLL_4S,  SReadV16, SExtractV16, SExtTo, int32_t, int32v4_t, SWriteV32, 4, 0)
+MAKE_SHLL_SEM(SSHLL_2D,  SReadV32, SExtractV32, SExtTo, int64_t, int64v2_t, SWriteV64, 2, 0)
+MAKE_SHLL_SEM(SSHLL2_8H, SReadV8,  SExtractV8,  SExtTo, int16_t, int16v8_t, SWriteV16, 8, 8)
+MAKE_SHLL_SEM(SSHLL2_4S, SReadV16, SExtractV16, SExtTo, int32_t, int32v4_t, SWriteV32, 4, 4)
+MAKE_SHLL_SEM(SSHLL2_2D, SReadV32, SExtractV32, SExtTo, int64_t, int64v2_t, SWriteV64, 2, 2)
+MAKE_SHLL_SEM(USHLL_8H,  UReadV8,  UExtractV8,  ZExtTo, uint16_t, uint16v8_t, UWriteV16, 8, 0)
+MAKE_SHLL_SEM(USHLL_4S,  UReadV16, UExtractV16, ZExtTo, uint32_t, uint32v4_t, UWriteV32, 4, 0)
+MAKE_SHLL_SEM(USHLL_2D,  UReadV32, UExtractV32, ZExtTo, uint64_t, uint64v2_t, UWriteV64, 2, 0)
+MAKE_SHLL_SEM(USHLL2_8H, UReadV8,  UExtractV8,  ZExtTo, uint16_t, uint16v8_t, UWriteV16, 8, 8)
+MAKE_SHLL_SEM(USHLL2_4S, UReadV16, UExtractV16, ZExtTo, uint32_t, uint32v4_t, UWriteV32, 4, 4)
+MAKE_SHLL_SEM(USHLL2_2D, UReadV32, UExtractV32, ZExtTo, uint64_t, uint64v2_t, UWriteV64, 2, 2)
+
+#undef MAKE_SHLL_SEM
+
 }  // namespace
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_8B) = CMPEQ_IMM_8<V64, uint8v8_t>;
@@ -352,6 +384,20 @@ DEF_ISEL(SHL_ASIMDSHF_R_8H) = SHL_IMM_16<V128, uint16v8_t>;
 DEF_ISEL(SHL_ASIMDSHF_R_2S) = SHL_IMM_32<V64, uint32v2_t>;
 DEF_ISEL(SHL_ASIMDSHF_R_4S) = SHL_IMM_32<V128, uint32v4_t>;
 DEF_ISEL(SHL_ASIMDSHF_R_2D) = SHL_IMM_64<V128, uint64v2_t>;
+
+// M12.7: SSHLL/USHLL (shift-left-long), low half (L, Q=0) + high half ("2", Q=1).
+DEF_ISEL(SSHLL_ASIMDSHF_L_8H) = SSHLL_8H;
+DEF_ISEL(SSHLL_ASIMDSHF_L_4S) = SSHLL_4S;
+DEF_ISEL(SSHLL_ASIMDSHF_L_2D) = SSHLL_2D;
+DEF_ISEL(SSHLL_ASIMDSHF_L_8H_2) = SSHLL2_8H;
+DEF_ISEL(SSHLL_ASIMDSHF_L_4S_2) = SSHLL2_4S;
+DEF_ISEL(SSHLL_ASIMDSHF_L_2D_2) = SSHLL2_2D;
+DEF_ISEL(USHLL_ASIMDSHF_L_8H) = USHLL_8H;
+DEF_ISEL(USHLL_ASIMDSHF_L_4S) = USHLL_4S;
+DEF_ISEL(USHLL_ASIMDSHF_L_2D) = USHLL_2D;
+DEF_ISEL(USHLL_ASIMDSHF_L_8H_2) = USHLL2_8H;
+DEF_ISEL(USHLL_ASIMDSHF_L_4S_2) = USHLL2_4S;
+DEF_ISEL(USHLL_ASIMDSHF_L_2D_2) = USHLL2_2D;
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_4H) = CMPEQ_IMM_16<V64, uint16v4_t>;
 DEF_ISEL(CMLT_ASIMDMISC_Z_4H) = CMPLT_IMM_16<V64, uint16v4_t>;

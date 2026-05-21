@@ -4288,6 +4288,42 @@ bool TryDecodeSHL_ASIMDSHF_R(const InstData &data, Instruction &inst) {
   return true;
 }
 
+// SSHLL{2}/USHLL{2}  <Vd>.<2e>, <Vn>.<e>, #<shift>  (M12.7: shift-left-long by imm)
+// Shared decode: immh selects the NARROW element size (8/16/32 → wide 16/32/64); the
+// dest arrangement is the WIDE one (8H/4S/2D). Q=0 → L (low half of Vn), Q=1 → "2"
+// (high half) which we tag with a "_2" ISEL suffix. shift = UInt(immh:immb) - esize.
+// The framework has already set inst.function to the base name (SSHLL_ASIMDSHF_L or
+// USHLL_ASIMDSHF_L) before this runs, so both decoders share this body.
+bool TryDecodeSSHLL_ASIMDSHF_L(const InstData &data, Instruction &inst) {
+  if (!data.immh.uimm || (data.immh.uimm & 0x8)) {
+    return false;  // immh==0 invalid; immh==1xxx (64-bit narrow) has no 128-bit wide.
+  }
+  uint64_t highest = 0;
+  if (data.immh.uimm & 0x4) {
+    highest = 2;
+  } else if (data.immh.uimm & 0x2) {
+    highest = 1;
+  } else {
+    highest = 0;
+  }
+  const uint64_t esize = 8ULL << highest;  // narrow element size: 8/16/32
+  const uint64_t immhb = (data.immh.uimm << 3) | data.immb.uimm;
+  const uint64_t shift = immhb - esize;
+  AddArrangementSpecifier(inst, 128, esize * 2);  // wide dest: 8H/4S/2D
+  if (data.Q) {
+    inst.function += "_2";  // SSHLL2/USHLL2 read the high half of Vn
+  }
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddImmOperand(inst, shift);
+  return true;
+}
+
+bool TryDecodeUSHLL_ASIMDSHF_L(const InstData &data, Instruction &inst) {
+  // Identical decode to SSHLL; inst.function base is already USHLL_ASIMDSHF_L.
+  return TryDecodeSSHLL_ASIMDSHF_L(data, inst);
+}
+
 // UMAXP  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
 bool TryDecodeUMAXP_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
   if (0x3 == data.size) {
