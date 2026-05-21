@@ -4782,6 +4782,31 @@ bool TryDecodeLDADDAL_64_MEMOP(const InstData &data, Instruction &inst) {
   return TryDecodeLDADD_op(data, inst, kRegX);
 }
 
+// M12.7: LSE load-op family decoders — identical operand shape to LDADD (Rt write,
+// [Rn] memop, Rs read). All delegate to TryDecodeLDADD_op.
+#define DEF_LDOP_DECODE(BASE) \
+  bool TryDecode##BASE##_32_MEMOP(const InstData &data, Instruction &inst) { \
+    return TryDecodeLDADD_op(data, inst, kRegW); } \
+  bool TryDecode##BASE##_64_MEMOP(const InstData &data, Instruction &inst) { \
+    return TryDecodeLDADD_op(data, inst, kRegX); } \
+  bool TryDecode##BASE##A_32_MEMOP(const InstData &data, Instruction &inst) { \
+    return TryDecodeLDADD_op(data, inst, kRegW); } \
+  bool TryDecode##BASE##A_64_MEMOP(const InstData &data, Instruction &inst) { \
+    return TryDecodeLDADD_op(data, inst, kRegX); } \
+  bool TryDecode##BASE##L_32_MEMOP(const InstData &data, Instruction &inst) { \
+    return TryDecodeLDADD_op(data, inst, kRegW); } \
+  bool TryDecode##BASE##L_64_MEMOP(const InstData &data, Instruction &inst) { \
+    return TryDecodeLDADD_op(data, inst, kRegX); } \
+  bool TryDecode##BASE##AL_32_MEMOP(const InstData &data, Instruction &inst) { \
+    return TryDecodeLDADD_op(data, inst, kRegW); } \
+  bool TryDecode##BASE##AL_64_MEMOP(const InstData &data, Instruction &inst) { \
+    return TryDecodeLDADD_op(data, inst, kRegX); }
+DEF_LDOP_DECODE(LDSET)
+DEF_LDOP_DECODE(LDCLR)
+DEF_LDOP_DECODE(LDEOR)
+DEF_LDOP_DECODE(SWP)
+#undef DEF_LDOP_DECODE
+
 // INS  <Vd>.<Ts>[<index1>], <Vn>.<Ts>[<index2>]
 //
 // Element-wise vector lane move. Rustc emits this as

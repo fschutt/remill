@@ -460,6 +460,61 @@ DEF_SEM(LDADDAL_op, D rt, M mem_op, S rs) {
   return memory;
 }
 
+// M12.7: the rest of the LSE atomic load-op family (LDSET/LDCLR/LDEOR/SWP), modeled on
+// LDADD above. Each: read old at [Rn], compute new = old OP rs, write new, return old in
+// Rt. A/L/AL add acquire / release / both barriers. (Arc/refcount atomics in the layout's
+// font-cache setup use LDSETA — `with_memory_fonts` hit a hot __remill_error on it.)
+#define MAKE_LDOP_ALL(BASE, NEWVAL) \
+  template <int W, typename D, typename M, typename S> \
+  DEF_SEM(BASE##_op, D rt, M mem_op, S rs) { \
+    using RW = LDADD_RW<W>; \
+    auto addr = AddressOf(mem_op); \
+    auto old_val = RW::do_read(memory, addr); \
+    auto rsv = static_cast<typename RW::vt>(Read(rs)); \
+    memory = RW::do_write(memory, addr, static_cast<typename RW::vt>(NEWVAL)); \
+    WriteZExt(rt, old_val); \
+    return memory; \
+  } \
+  template <int W, typename D, typename M, typename S> \
+  DEF_SEM(BASE##A_op, D rt, M mem_op, S rs) { \
+    using RW = LDADD_RW<W>; \
+    memory = __remill_barrier_load_store(memory); \
+    auto addr = AddressOf(mem_op); \
+    auto old_val = RW::do_read(memory, addr); \
+    auto rsv = static_cast<typename RW::vt>(Read(rs)); \
+    memory = RW::do_write(memory, addr, static_cast<typename RW::vt>(NEWVAL)); \
+    WriteZExt(rt, old_val); \
+    return memory; \
+  } \
+  template <int W, typename D, typename M, typename S> \
+  DEF_SEM(BASE##L_op, D rt, M mem_op, S rs) { \
+    using RW = LDADD_RW<W>; \
+    auto addr = AddressOf(mem_op); \
+    auto old_val = RW::do_read(memory, addr); \
+    auto rsv = static_cast<typename RW::vt>(Read(rs)); \
+    memory = RW::do_write(memory, addr, static_cast<typename RW::vt>(NEWVAL)); \
+    WriteZExt(rt, old_val); \
+    memory = __remill_barrier_store_store(memory); \
+    return memory; \
+  } \
+  template <int W, typename D, typename M, typename S> \
+  DEF_SEM(BASE##AL_op, D rt, M mem_op, S rs) { \
+    using RW = LDADD_RW<W>; \
+    memory = __remill_barrier_load_store(memory); \
+    auto addr = AddressOf(mem_op); \
+    auto old_val = RW::do_read(memory, addr); \
+    auto rsv = static_cast<typename RW::vt>(Read(rs)); \
+    memory = RW::do_write(memory, addr, static_cast<typename RW::vt>(NEWVAL)); \
+    WriteZExt(rt, old_val); \
+    memory = __remill_barrier_store_store(memory); \
+    return memory; \
+  }
+MAKE_LDOP_ALL(LDSET, old_val | rsv)
+MAKE_LDOP_ALL(LDCLR, old_val & ~rsv)
+MAKE_LDOP_ALL(LDEOR, old_val ^ rsv)
+MAKE_LDOP_ALL(SWP, rsv)
+#undef MAKE_LDOP_ALL
+
 }  // namespace
 
 DEF_ISEL(LDADD_32_MEMOP) = LDADD_op<32, R32W, M32W, R32>;
@@ -470,6 +525,22 @@ DEF_ISEL(LDADDL_32_MEMOP) = LDADDL_op<32, R32W, M32W, R32>;
 DEF_ISEL(LDADDL_64_MEMOP) = LDADDL_op<64, R64W, M64W, R64>;
 DEF_ISEL(LDADDAL_32_MEMOP) = LDADDAL_op<32, R32W, M32W, R32>;
 DEF_ISEL(LDADDAL_64_MEMOP) = LDADDAL_op<64, R64W, M64W, R64>;
+
+// M12.7: LSE load-op family ISELs.
+#define DEF_LDOP_ISEL(BASE) \
+  DEF_ISEL(BASE##_32_MEMOP) = BASE##_op<32, R32W, M32W, R32>; \
+  DEF_ISEL(BASE##_64_MEMOP) = BASE##_op<64, R64W, M64W, R64>; \
+  DEF_ISEL(BASE##A_32_MEMOP) = BASE##A_op<32, R32W, M32W, R32>; \
+  DEF_ISEL(BASE##A_64_MEMOP) = BASE##A_op<64, R64W, M64W, R64>; \
+  DEF_ISEL(BASE##L_32_MEMOP) = BASE##L_op<32, R32W, M32W, R32>; \
+  DEF_ISEL(BASE##L_64_MEMOP) = BASE##L_op<64, R64W, M64W, R64>; \
+  DEF_ISEL(BASE##AL_32_MEMOP) = BASE##AL_op<32, R32W, M32W, R32>; \
+  DEF_ISEL(BASE##AL_64_MEMOP) = BASE##AL_op<64, R64W, M64W, R64>;
+DEF_LDOP_ISEL(LDSET)
+DEF_LDOP_ISEL(LDCLR)
+DEF_LDOP_ISEL(LDEOR)
+DEF_LDOP_ISEL(SWP)
+#undef DEF_LDOP_ISEL
 
 // LDAR is defined later via the existing LoadAcquire template;
 // only STLR_SL64 was missing.

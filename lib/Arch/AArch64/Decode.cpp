@@ -1876,9 +1876,7 @@ bool TryDecodeFSQRT_D_FLOATDP1(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDEORA  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDEORA_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDEORA_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDEORAL LDEORAL_32_memop:
 //   0 x Rt       0
@@ -1914,9 +1912,7 @@ bool TryDecodeLDEORA_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDEORAL  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDEORAL_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDEORAL_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDEOR LDEOR_32_memop:
 //   0 x Rt       0
@@ -1952,9 +1948,7 @@ bool TryDecodeLDEORAL_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDEOR  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDEOR_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDEOR_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDEORL LDEORL_32_memop:
 //   0 x Rt       0
@@ -1990,9 +1984,7 @@ bool TryDecodeLDEOR_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDEORL  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDEORL_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDEORL_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDEORA LDEORA_64_memop:
 //   0 x Rt       0
@@ -2028,9 +2020,7 @@ bool TryDecodeLDEORL_32_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDEORA  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDEORA_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDEORA_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDEORAL LDEORAL_64_memop:
 //   0 x Rt       0
@@ -2066,9 +2056,7 @@ bool TryDecodeLDEORA_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDEORAL  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDEORAL_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDEORAL_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDEOR LDEOR_64_memop:
 //   0 x Rt       0
@@ -2104,9 +2092,7 @@ bool TryDecodeLDEORAL_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDEOR  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDEOR_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDEOR_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDEORL LDEORL_64_memop:
 //   0 x Rt       0
@@ -2142,9 +2128,7 @@ bool TryDecodeLDEOR_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDEORL  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDEORL_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDEORL_64_MEMOP(const InstData &data, Instruction &inst);
 
 // SHRN SHRN_asimdshf_N:
 //   0 x Rd       0
@@ -2674,9 +2658,7 @@ bool TryDecodeSQRDMLSH_ASIMDELEM_R(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDCLRA  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDCLRA_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDCLRA_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDCLRAL LDCLRAL_32_memop:
 //   0 x Rt       0
@@ -2712,9 +2694,7 @@ bool TryDecodeLDCLRA_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDCLRAL  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDCLRAL_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDCLRAL_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDCLR LDCLR_32_memop:
 //   0 x Rt       0
@@ -2750,9 +2730,7 @@ bool TryDecodeLDCLRAL_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDCLR  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDCLR_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDCLR_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDCLRL LDCLRL_32_memop:
 //   0 x Rt       0
@@ -2788,9 +2766,7 @@ bool TryDecodeLDCLR_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDCLRL  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDCLRL_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDCLRL_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDCLRA LDCLRA_64_memop:
 //   0 x Rt       0
@@ -2826,9 +2802,7 @@ bool TryDecodeLDCLRL_32_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDCLRA  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDCLRA_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDCLRA_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDCLRAL LDCLRAL_64_memop:
 //   0 x Rt       0
@@ -2864,9 +2838,7 @@ bool TryDecodeLDCLRA_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDCLRAL  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDCLRAL_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDCLRAL_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDCLR LDCLR_64_memop:
 //   0 x Rt       0
@@ -2902,9 +2874,7 @@ bool TryDecodeLDCLRAL_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDCLR  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDCLR_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDCLR_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDCLRL LDCLRL_64_memop:
 //   0 x Rt       0
@@ -2940,9 +2910,7 @@ bool TryDecodeLDCLR_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDCLRL  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDCLRL_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDCLRL_64_MEMOP(const InstData &data, Instruction &inst);
 
 // UABD UABD_asimdsame_only:
 //   0 x Rd       0
@@ -5426,9 +5394,7 @@ bool TryDecodeSUB_ASISDSAME_ONLY(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // SWPA  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeSWPA_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSWPA_32_MEMOP(const InstData &data, Instruction &inst);
 
 // SWPAL SWPAL_32_memop:
 //   0 x Rt       0
@@ -5464,9 +5430,7 @@ bool TryDecodeSWPA_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // SWPAL  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeSWPAL_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSWPAL_32_MEMOP(const InstData &data, Instruction &inst);
 
 // SWP SWP_32_memop:
 //   0 x Rt       0
@@ -5502,9 +5466,7 @@ bool TryDecodeSWPAL_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // SWP  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeSWP_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSWP_32_MEMOP(const InstData &data, Instruction &inst);
 
 // SWPL SWPL_32_memop:
 //   0 x Rt       0
@@ -5540,9 +5502,7 @@ bool TryDecodeSWP_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // SWPL  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeSWPL_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSWPL_32_MEMOP(const InstData &data, Instruction &inst);
 
 // SWPA SWPA_64_memop:
 //   0 x Rt       0
@@ -5578,9 +5538,7 @@ bool TryDecodeSWPL_32_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // SWPA  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeSWPA_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSWPA_64_MEMOP(const InstData &data, Instruction &inst);
 
 // SWPAL SWPAL_64_memop:
 //   0 x Rt       0
@@ -5616,9 +5574,7 @@ bool TryDecodeSWPA_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // SWPAL  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeSWPAL_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSWPAL_64_MEMOP(const InstData &data, Instruction &inst);
 
 // SWP SWP_64_memop:
 //   0 x Rt       0
@@ -5654,9 +5610,7 @@ bool TryDecodeSWPAL_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // SWP  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeSWP_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSWP_64_MEMOP(const InstData &data, Instruction &inst);
 
 // SWPL SWPL_64_memop:
 //   0 x Rt       0
@@ -5692,9 +5646,7 @@ bool TryDecodeSWP_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // SWPL  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeSWPL_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSWPL_64_MEMOP(const InstData &data, Instruction &inst);
 
 // SMC SMC_EX_exception:
 //   0 1 LL       0
@@ -18812,9 +18764,7 @@ bool TryDecodeSABAL_ASIMDDIFF_L(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDSETA  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDSETA_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDSETA_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDSETAL LDSETAL_32_memop:
 //   0 x Rt       0
@@ -18850,9 +18800,7 @@ bool TryDecodeLDSETA_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDSETAL  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDSETAL_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDSETAL_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDSET LDSET_32_memop:
 //   0 x Rt       0
@@ -18888,9 +18836,7 @@ bool TryDecodeLDSETAL_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDSET  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDSET_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDSET_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDSETL LDSETL_32_memop:
 //   0 x Rt       0
@@ -18926,9 +18872,7 @@ bool TryDecodeLDSET_32_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // LDSETL  <Ws>, <Wt>, [<Xn|SP>]
-bool TryDecodeLDSETL_32_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDSETL_32_MEMOP(const InstData &data, Instruction &inst);
 
 // LDSETA LDSETA_64_memop:
 //   0 x Rt       0
@@ -18964,9 +18908,7 @@ bool TryDecodeLDSETL_32_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDSETA  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDSETA_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDSETA_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDSETAL LDSETAL_64_memop:
 //   0 x Rt       0
@@ -19002,9 +18944,7 @@ bool TryDecodeLDSETA_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDSETAL  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDSETAL_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDSETAL_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDSET LDSET_64_memop:
 //   0 x Rt       0
@@ -19040,9 +18980,7 @@ bool TryDecodeLDSETAL_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDSET  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDSET_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDSET_64_MEMOP(const InstData &data, Instruction &inst);
 
 // LDSETL LDSETL_64_memop:
 //   0 x Rt       0
@@ -19078,9 +19016,7 @@ bool TryDecodeLDSET_64_MEMOP(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // LDSETL  <Xs>, <Xt>, [<Xn|SP>]
-bool TryDecodeLDSETL_64_MEMOP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLDSETL_64_MEMOP(const InstData &data, Instruction &inst);
 
 // FRECPS FRECPS_asisdsamefp16_only:
 //   0 x Rd       0
