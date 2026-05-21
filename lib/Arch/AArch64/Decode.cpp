@@ -10584,9 +10584,7 @@ bool TryDecodeFCVTZU_ASIMDMISCFP16_R(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FCVTZU  <Vd>.<T>, <Vn>.<T>
-bool TryDecodeFCVTZU_ASIMDMISC_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFCVTZU_ASIMDMISC_R(const InstData &data, Instruction &inst);
 
 // ORN MVN_ORN_32_log_shift:
 //   0 x Rd       0
@@ -38830,9 +38828,7 @@ bool TryDecodeUSHL_ASISDSAME_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // USHL  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeUSHL_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeUSHL_ASIMDSAME_ONLY(const InstData &data, Instruction &inst);
 
 // FADDP FADDP_asisdpair_only_H:
 //   0 x Rd       0
@@ -38982,9 +38978,7 @@ bool TryDecodeSSHR_ASISDSHF_R(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // SSHR  <Vd>.<T>, <Vn>.<T>, #<shift>
-bool TryDecodeSSHR_ASIMDSHF_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSSHR_ASIMDSHF_R(const InstData &data, Instruction &inst);
 
 // SHSUB SHSUB_asimdsame_only:
 //   0 x Rd       0

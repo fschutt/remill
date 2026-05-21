@@ -5188,7 +5188,7 @@ bool TryDecodeUSHR_ASISDSHF_R(const InstData &data, Instruction &inst) {
 
 // USHR  <Vd>.<T>, <Vn>.<T>, #<shift>
 bool TryDecodeUSHR_ASIMDSHF_R(const InstData &data, Instruction &inst) {
-  return false;  // TODO remove this after adding semantics for vector version
+  // M12.7: enabled now that the vector USHR semantics exist (SIMD.cpp).
   if (((data.immh.uimm & 8) != 0) && !data.Q) {
     return false;  // `if immh<3>:Q == '10' then ReservedValue();`
   }
@@ -5199,12 +5199,34 @@ bool TryDecodeUSHR_ASIMDSHF_R(const InstData &data, Instruction &inst) {
   const uint64_t datasize = data.Q ? 128 : 64;
   AddArrangementSpecifier(inst, datasize, esize);
 
-  // AddArrangementSpecifier(inst, 128, 8UL << data.size);
-
   uint64_t shift = (esize * 2) - ((data.immh.uimm << 3) + data.immb.uimm);
   AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
   AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
   AddImmOperand(inst, shift);
+  return true;
+}
+
+// M12.7: SSHR (signed shift-right by immediate) — identical decode to USHR; the base
+// inst.function name (SSHR_ASIMDSHF_R) is already set by the framework before this runs.
+bool TryDecodeSSHR_ASIMDSHF_R(const InstData &data, Instruction &inst) {
+  return TryDecodeUSHR_ASIMDSHF_R(data, inst);
+}
+
+// M12.7: FCVTZU (vector float->uint toward zero) — same ASIMDMISC sz/Q decode as SCVTF.
+bool TryDecodeFCVTZU_ASIMDMISC_R(const InstData &data, Instruction &inst) {
+  return TryDecodeCVTF_ASIMDMISC(data, inst);
+}
+
+// M12.7: USHL (vector unsigned variable shift, ASIMDSAME) — size+Q arrangement, three
+// V-reg operands (Rd<-Rn,Rm).
+bool TryDecodeUSHL_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  if (data.size == 0x3 && !data.Q) {
+    return false;  // 64-bit elements (.2D) require Q==1
+  }
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 8ULL << data.size);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rm);
   return true;
 }
 

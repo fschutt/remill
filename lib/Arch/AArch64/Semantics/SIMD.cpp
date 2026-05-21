@@ -486,6 +486,77 @@ MAKE_FMINMAX(FMIN_VEC_4S, <, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
 MAKE_FMINMAX(FMIN_VEC_2D, <, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
 #undef MAKE_FMINMAX
 
+// M12.7: vector float->uint convert toward zero (FCVTZU ASIMDMISC) — per-lane
+// CheckedCast<float,uint>, mirror of SCVTF.
+#define MAKE_FCVTZ_VEC(NAME, RDV, EXV, SRCT, DSTT, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src) { \
+    auto v = RDV(src); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = CheckedCast<SRCT, DSTT>(state, EXV(v, i)); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_FCVTZ_VEC(FCVTZU_VEC_2S, FReadV32, FExtractV32, float32_t, uint32_t, UWriteV32, uint32v2_t, 2)
+MAKE_FCVTZ_VEC(FCVTZU_VEC_4S, FReadV32, FExtractV32, float32_t, uint32_t, UWriteV32, uint32v4_t, 4)
+MAKE_FCVTZ_VEC(FCVTZU_VEC_2D, FReadV64, FExtractV64, float64_t, uint64_t, UWriteV64, uint64v2_t, 2)
+#undef MAKE_FCVTZ_VEC
+
+// M12.7: vector shift-right by immediate (SSHR signed-arith / USHR unsigned-logical,
+// ASIMDSHF). The shift amount is decoded as an immediate operand.
+#define MAKE_SHR(NAME, RDV, EXV, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src, I64 shift) { \
+    auto v = RDV(src); \
+    auto s = Read(shift); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = EXV(v, i) >> s; \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_SHR(SSHR_8B,  SReadV8,  SExtractV8,  SWriteV8,  int8v8_t,   8)
+MAKE_SHR(SSHR_16B, SReadV8,  SExtractV8,  SWriteV8,  int8v16_t,  16)
+MAKE_SHR(SSHR_4H,  SReadV16, SExtractV16, SWriteV16, int16v4_t,  4)
+MAKE_SHR(SSHR_8H,  SReadV16, SExtractV16, SWriteV16, int16v8_t,  8)
+MAKE_SHR(SSHR_2S,  SReadV32, SExtractV32, SWriteV32, int32v2_t,  2)
+MAKE_SHR(SSHR_4S,  SReadV32, SExtractV32, SWriteV32, int32v4_t,  4)
+MAKE_SHR(SSHR_2D,  SReadV64, SExtractV64, SWriteV64, int64v2_t,  2)
+MAKE_SHR(USHR_8B,  UReadV8,  UExtractV8,  UWriteV8,  uint8v8_t,   8)
+MAKE_SHR(USHR_16B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t,  16)
+MAKE_SHR(USHR_4H,  UReadV16, UExtractV16, UWriteV16, uint16v4_t,  4)
+MAKE_SHR(USHR_8H,  UReadV16, UExtractV16, UWriteV16, uint16v8_t,  8)
+MAKE_SHR(USHR_2S,  UReadV32, UExtractV32, UWriteV32, uint32v2_t,  2)
+MAKE_SHR(USHR_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4)
+MAKE_SHR(USHR_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2)
+#undef MAKE_SHR
+
+// M12.7: unsigned variable shift (USHL ASIMDSAME) — per-lane: the signed low byte of
+// src2[i] gives a left shift (>=0) or logical right shift (<0).
+#define MAKE_USHL(NAME, RDV, EXV, WRV, DV, ELEMT, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src1, V128 src2) { \
+    auto v1 = RDV(src1); \
+    auto v2 = RDV(src2); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      int8_t sh = static_cast<int8_t>(EXV(v2, i) & 0xff); \
+      ELEMT x = EXV(v1, i); \
+      res.elems[i] = (sh >= 0) ? (sh >= static_cast<int8_t>(sizeof(ELEMT) * 8) ? 0 : (x << sh)) \
+                               : ((-sh) >= static_cast<int8_t>(sizeof(ELEMT) * 8) ? 0 : (x >> (-sh))); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_USHL(USHL_8B,  UReadV8,  UExtractV8,  UWriteV8,  uint8v8_t,   uint8_t,  8)
+MAKE_USHL(USHL_16B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t,  uint8_t,  16)
+MAKE_USHL(USHL_4H,  UReadV16, UExtractV16, UWriteV16, uint16v4_t,  uint16_t, 4)
+MAKE_USHL(USHL_8H,  UReadV16, UExtractV16, UWriteV16, uint16v8_t,  uint16_t, 8)
+MAKE_USHL(USHL_2S,  UReadV32, UExtractV32, UWriteV32, uint32v2_t,  uint32_t, 2)
+MAKE_USHL(USHL_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  uint32_t, 4)
+MAKE_USHL(USHL_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  uint64_t, 2)
+#undef MAKE_USHL
+
 }  // namespace
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_8B) = CMPEQ_IMM_8<V64, uint8v8_t>;
@@ -584,6 +655,36 @@ DEF_ISEL(FMAXNM_ASIMDSAME_ONLY_2D) = FMAX_VEC_2D;
 DEF_ISEL(FMINNM_ASIMDSAME_ONLY_2S) = FMIN_VEC_2S;
 DEF_ISEL(FMINNM_ASIMDSAME_ONLY_4S) = FMIN_VEC_4S;
 DEF_ISEL(FMINNM_ASIMDSAME_ONLY_2D) = FMIN_VEC_2D;
+
+// M12.7: FCVTZU (vector float->uint).
+DEF_ISEL(FCVTZU_ASIMDMISC_R_2S) = FCVTZU_VEC_2S;
+DEF_ISEL(FCVTZU_ASIMDMISC_R_4S) = FCVTZU_VEC_4S;
+DEF_ISEL(FCVTZU_ASIMDMISC_R_2D) = FCVTZU_VEC_2D;
+
+// M12.7: SSHR/USHR (vector shift-right by immediate).
+DEF_ISEL(SSHR_ASIMDSHF_R_8B)  = SSHR_8B;
+DEF_ISEL(SSHR_ASIMDSHF_R_16B) = SSHR_16B;
+DEF_ISEL(SSHR_ASIMDSHF_R_4H)  = SSHR_4H;
+DEF_ISEL(SSHR_ASIMDSHF_R_8H)  = SSHR_8H;
+DEF_ISEL(SSHR_ASIMDSHF_R_2S)  = SSHR_2S;
+DEF_ISEL(SSHR_ASIMDSHF_R_4S)  = SSHR_4S;
+DEF_ISEL(SSHR_ASIMDSHF_R_2D)  = SSHR_2D;
+DEF_ISEL(USHR_ASIMDSHF_R_8B)  = USHR_8B;
+DEF_ISEL(USHR_ASIMDSHF_R_16B) = USHR_16B;
+DEF_ISEL(USHR_ASIMDSHF_R_4H)  = USHR_4H;
+DEF_ISEL(USHR_ASIMDSHF_R_8H)  = USHR_8H;
+DEF_ISEL(USHR_ASIMDSHF_R_2S)  = USHR_2S;
+DEF_ISEL(USHR_ASIMDSHF_R_4S)  = USHR_4S;
+DEF_ISEL(USHR_ASIMDSHF_R_2D)  = USHR_2D;
+
+// M12.7: USHL (vector unsigned variable shift).
+DEF_ISEL(USHL_ASIMDSAME_ONLY_8B)  = USHL_8B;
+DEF_ISEL(USHL_ASIMDSAME_ONLY_16B) = USHL_16B;
+DEF_ISEL(USHL_ASIMDSAME_ONLY_4H)  = USHL_4H;
+DEF_ISEL(USHL_ASIMDSAME_ONLY_8H)  = USHL_8H;
+DEF_ISEL(USHL_ASIMDSAME_ONLY_2S)  = USHL_2S;
+DEF_ISEL(USHL_ASIMDSAME_ONLY_4S)  = USHL_4S;
+DEF_ISEL(USHL_ASIMDSAME_ONLY_2D)  = USHL_2D;
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_4H) = CMPEQ_IMM_16<V64, uint16v4_t>;
 DEF_ISEL(CMLT_ASIMDMISC_Z_4H) = CMPLT_IMM_16<V64, uint16v4_t>;
