@@ -3022,9 +3022,7 @@ bool TryDecodeFRINTA_ASIMDMISCFP16_R(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FRINTA  <Vd>.<T>, <Vn>.<T>
-bool TryDecodeFRINTA_ASIMDMISC_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFRINTA_ASIMDMISC_R(const InstData &data, Instruction &inst);
 
 // STXP STXP_SP32_ldstexcl:
 //   0 x Rt       0
@@ -16437,9 +16435,7 @@ bool TryDecodeSQXTN_ASISDMISC_N(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // SQXTN{2}  <Vd>.<Tb>, <Vn>.<Ta>
-bool TryDecodeSQXTN_ASIMDMISC_N(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSQXTN_ASIMDMISC_N(const InstData &data, Instruction &inst);
 
 // ORR MOV_ORR_asimdsame_only:
 //   0 x Rd       0
@@ -24655,9 +24651,7 @@ bool TryDecodeFMOV_ASIMDIMM_H_H(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FMOV  <Vd>.<T>, #<imm>
-bool TryDecodeFMOV_ASIMDIMM_S_S(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFMOV_ASIMDIMM_S_S(const InstData &data, Instruction &inst);
 
 // FMOV FMOV_asimdimm_D2_d:
 //   0 x Rd       0
@@ -28443,9 +28437,7 @@ bool TryDecodeFCVTZS_ASIMDMISCFP16_R(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FCVTZS  <Vd>.<T>, <Vn>.<T>
-bool TryDecodeFCVTZS_ASIMDMISC_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFCVTZS_ASIMDMISC_R(const InstData &data, Instruction &inst);
 
 // FMAXNM FMAXNM_H_floatdp2:
 //   0 x Rd       0

@@ -5208,6 +5208,19 @@ bool TryDecodeMOVI_ASIMDIMM_M_SM(const InstData &data, Instruction &inst) {
   return true;
 }
 
+// M12.7: FMOV  <Vd>.<T>, #<imm> (vector FP move-immediate, single-precision .2s/.4s).
+// Decode the 8-bit FP immediate (abcdefgh) to the float32 bit pattern (VFPExpandImm) and
+// broadcast it to all lanes — reuse the MOVI 32-bit broadcast semantic. (The layout's
+// LayoutNode::split does `fmov v.4s, #10.0; fmul; frinta; fcvtzs; sqxtn` = ×10 fixed-point
+// pixel quantization.)
+bool TryDecodeFMOV_ASIMDIMM_S_S(const InstData &data, Instruction &inst) {
+  AddQArrangementSpecifier(data, inst, "4S", "2S");
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  auto float_val = VFPExpandImmToFloat32(ConcatABCDEFGHToU8(data));
+  AddImmOperand(inst, float_val, kUnsigned, 32);
+  return true;
+}
+
 // MOVI  <Dd>, #<imm>
 bool TryDecodeMOVI_ASIMDIMM_D_DS(const InstData &data, Instruction &inst) {
   AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
@@ -5286,6 +5299,31 @@ bool TryDecodeSSHR_ASIMDSHF_R(const InstData &data, Instruction &inst) {
 // M12.7: FCVTZU (vector float->uint toward zero) — same ASIMDMISC sz/Q decode as SCVTF.
 bool TryDecodeFCVTZU_ASIMDMISC_R(const InstData &data, Instruction &inst) {
   return TryDecodeCVTF_ASIMDMISC(data, inst);
+}
+
+// M12.7: FCVTZS (vector float->signed int) + FRINTA (vector round half-away) — same
+// ASIMDMISC dst<-src shape + size/Q arrangement as the CVTF group.
+bool TryDecodeFCVTZS_ASIMDMISC_R(const InstData &data, Instruction &inst) {
+  return TryDecodeCVTF_ASIMDMISC(data, inst);
+}
+bool TryDecodeFRINTA_ASIMDMISC_R(const InstData &data, Instruction &inst) {
+  return TryDecodeCVTF_ASIMDMISC(data, inst);
+}
+
+// M12.7: SQXTN / SQXTN2 — signed saturating extract narrow. Dest arrangement (Q?128:64,
+// element 8<<size): Q=0 -> .4h/.8b/.2s (SQXTN, low half, dst write-only -> upper zeroed);
+// Q=1 -> .8h/.16b/.4s (SQXTN2, high half -> dst is read+write to preserve the low half).
+bool TryDecodeSQXTN_ASIMDMISC_N(const InstData &data, Instruction &inst) {
+  if (0x3 == data.size) {
+    return false;  // no 128->64 narrow
+  }
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 8ULL << data.size);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  if (data.Q) {
+    AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rd);
+  }
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  return true;
 }
 
 // M12.7: USHL (vector unsigned variable shift, ASIMDSAME) — size+Q arrangement, three

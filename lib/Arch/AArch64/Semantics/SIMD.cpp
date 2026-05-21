@@ -501,7 +501,60 @@ MAKE_FMINMAX(FMIN_VEC_2D, <, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
 MAKE_FCVTZ_VEC(FCVTZU_VEC_2S, FReadV32, FExtractV32, float32_t, uint32_t, UWriteV32, uint32v2_t, 2)
 MAKE_FCVTZ_VEC(FCVTZU_VEC_4S, FReadV32, FExtractV32, float32_t, uint32_t, UWriteV32, uint32v4_t, 4)
 MAKE_FCVTZ_VEC(FCVTZU_VEC_2D, FReadV64, FExtractV64, float64_t, uint64_t, UWriteV64, uint64v2_t, 2)
+// M12.7: signed variant (FCVTZS, float->signed int toward zero) — same macro, int dest.
+MAKE_FCVTZ_VEC(FCVTZS_VEC_2S, FReadV32, FExtractV32, float32_t, int32_t, SWriteV32, int32v2_t, 2)
+MAKE_FCVTZ_VEC(FCVTZS_VEC_4S, FReadV32, FExtractV32, float32_t, int32_t, SWriteV32, int32v4_t, 4)
+MAKE_FCVTZ_VEC(FCVTZS_VEC_2D, FReadV64, FExtractV64, float64_t, int64_t, SWriteV64, int64v2_t, 2)
 #undef MAKE_FCVTZ_VEC
+
+// M12.7: vector FRINTA (round to nearest, ties away from zero) — float->float, per lane.
+// Implemented as floor(x + copysign(0.5, x)) which is exactly round-half-away and lowers
+// to wasm-native f32.floor / f32.copysign / f32.add (no libcall). Used by the layout's
+// geometry->pixel quantization (LayoutNode::split: frinta -> fcvtzs -> sqxtn).
+#define MAKE_FRINTA_VEC(NAME, RDV, EXV, T, WRV, DV, NL, HALF, FLR, CPS) \
+  DEF_SEM(NAME, V128W dst, V128 src) { \
+    auto v = RDV(src); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      T x = EXV(v, i); \
+      res.elems[i] = FLR(x + CPS(static_cast<T>(HALF), x)); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_FRINTA_VEC(FRINTA_VEC_2S, FReadV32, FExtractV32, float32_t, FWriteV32, float32v2_t, 2, 0.5f, __builtin_floorf, __builtin_copysignf)
+MAKE_FRINTA_VEC(FRINTA_VEC_4S, FReadV32, FExtractV32, float32_t, FWriteV32, float32v4_t, 4, 0.5f, __builtin_floorf, __builtin_copysignf)
+MAKE_FRINTA_VEC(FRINTA_VEC_2D, FReadV64, FExtractV64, float64_t, FWriteV64, float64v2_t, 2, 0.5, __builtin_floor, __builtin_copysign)
+#undef MAKE_FRINTA_VEC
+
+// M12.7: SQXTN / SQXTN2 — signed saturating extract narrow, i32 -> i16 (the .4h/.8h forms
+// the layout uses). SQXTN (.4h, Q=0) writes the low 64 bits and zeroes the upper; SQXTN2
+// (.8h, Q=1) writes the upper 64 bits (lanes 4-7) preserving the lower. Saturate to i16.
+ALWAYS_INLINE static int16_t AzSatI32ToI16(int32_t x) {
+  return x > 32767 ? static_cast<int16_t>(32767)
+                   : (x < -32768 ? static_cast<int16_t>(-32768)
+                                 : static_cast<int16_t>(x));
+}
+DEF_SEM(SQXTN_4H, V128W dst, V128 src) {
+  auto s = SReadV32(src);
+  int16v8_t res = {};
+  _Pragma("unroll") for (size_t i = 0; i < 4; ++i) {
+    res.elems[i] = AzSatI32ToI16(SExtractV32(s, i));
+  }
+  SWriteV16(dst, res);
+  return memory;
+}
+DEF_SEM(SQXTN_8H, V128W dst, V128 dst_in, V128 src) {
+  auto s = SReadV32(src);
+  auto d = SReadV16(dst_in);
+  int16v8_t res = {};
+  _Pragma("unroll") for (size_t i = 0; i < 4; ++i) {
+    res.elems[i] = SExtractV16(d, i);
+    res.elems[i + 4] = AzSatI32ToI16(SExtractV32(s, i));
+  }
+  SWriteV16(dst, res);
+  return memory;
+}
 
 // M12.7: vector shift-right by immediate (SSHR signed-arith / USHR unsigned-logical,
 // ASIMDSHF). The shift amount is decoded as an immediate operand.
@@ -640,6 +693,17 @@ DEF_ISEL(ZIP2_ASIMDPERM_ONLY_8H)  = ZIP2_8H;
 DEF_ISEL(ZIP2_ASIMDPERM_ONLY_2S)  = ZIP2_2S;
 DEF_ISEL(ZIP2_ASIMDPERM_ONLY_4S)  = ZIP2_4S;
 DEF_ISEL(ZIP2_ASIMDPERM_ONLY_2D)  = ZIP2_2D;
+
+// M12.7: FCVTZS (vector float->signed int), FRINTA (vector round half-away), SQXTN/SQXTN2
+// (signed saturating narrow i32->i16) — the layout's geometry->pixel quantization.
+DEF_ISEL(FCVTZS_ASIMDMISC_R_2S) = FCVTZS_VEC_2S;
+DEF_ISEL(FCVTZS_ASIMDMISC_R_4S) = FCVTZS_VEC_4S;
+DEF_ISEL(FCVTZS_ASIMDMISC_R_2D) = FCVTZS_VEC_2D;
+DEF_ISEL(FRINTA_ASIMDMISC_R_2S) = FRINTA_VEC_2S;
+DEF_ISEL(FRINTA_ASIMDMISC_R_4S) = FRINTA_VEC_4S;
+DEF_ISEL(FRINTA_ASIMDMISC_R_2D) = FRINTA_VEC_2D;
+DEF_ISEL(SQXTN_ASIMDMISC_N_4H) = SQXTN_4H;
+DEF_ISEL(SQXTN_ASIMDMISC_N_8H) = SQXTN_8H;
 
 // M12.7: vector FP min/max (FMAX/FMIN/FMAXNM/FMINNM ASIMDSAME). NM variants reuse the
 // same per-lane FloatMax/FloatMin (NaN distinction irrelevant for finite layout values).

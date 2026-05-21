@@ -1852,6 +1852,10 @@ DEF_ISEL(MOVI_ASIMDIMM_L_SL_4S) = MOVI_L_SL<uint32v4_t>;
 DEF_ISEL(MOVI_ASIMDIMM_M_SM_2S) = MOVI_L_SL<uint32v2_t>;
 DEF_ISEL(MOVI_ASIMDIMM_M_SM_4S) = MOVI_L_SL<uint32v4_t>;
 DEF_ISEL(MOVI_ASIMDIMM_D_DS) = MOVI_DS;
+// M12.7: FMOV vector FP-immediate broadcast (imm pre-expanded to float32 bits in the
+// decoder, so the 32-bit MOVI broadcast semantic applies unchanged).
+DEF_ISEL(FMOV_ASIMDIMM_S_S_2S) = MOVI_L_SL<uint32v2_t>;
+DEF_ISEL(FMOV_ASIMDIMM_S_S_4S) = MOVI_L_SL<uint32v4_t>;
 
 DEF_ISEL(MVNI_ASIMDIMM_L_HL_4H) = MOVI_L_HL<uint16v4_t>;
 DEF_ISEL(MVNI_ASIMDIMM_L_HL_8H) = MOVI_L_HL<uint16v8_t>;
