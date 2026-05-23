@@ -5254,6 +5254,25 @@ bool TryDecodeMOVI_ASIMDIMM_L_SL(const InstData &data, Instruction &inst) {
   return true;
 }
 
+// M12.7: BIC (vector, immediate) — same imm expansion as MOVI L_HL/L_SL, but Vd is
+// read+write (the semantic AND-NOTs the imm into the existing lanes).
+bool TryDecodeBIC_ASIMDIMM_L_HL(const InstData &data, Instruction &inst) {
+  AddQArrangementSpecifier(data, inst, "8H", "4H");
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rd);
+  uint64_t shift = (data.cmode & 2) ? 8 : 0;
+  AddImmOperand(inst, ConcatABCDEFGHToU8(data) << shift, kUnsigned, 16);
+  return true;
+}
+bool TryDecodeBIC_ASIMDIMM_L_SL(const InstData &data, Instruction &inst) {
+  AddQArrangementSpecifier(data, inst, "4S", "2S");
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rd);
+  uint64_t shift = 8 * ((data.cmode >> 1) & 3);
+  AddImmOperand(inst, ConcatABCDEFGHToU8(data) << shift, kUnsigned, 32);
+  return true;
+}
+
 // MOVI  <Vd>.<T>, #<imm8>, MSL #<amount>
 bool TryDecodeMOVI_ASIMDIMM_M_SM(const InstData &data, Instruction &inst) {
   AddQArrangementSpecifier(data, inst, "4S", "2S");

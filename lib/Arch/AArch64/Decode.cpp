@@ -19744,9 +19744,7 @@ bool TryDecodeFMULX_ASIMDELEM_R_SD(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // BIC  <Vd>.<T>, #<imm8>{, LSL #<amount>}
-bool TryDecodeBIC_ASIMDIMM_L_HL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeBIC_ASIMDIMM_L_HL(const InstData &data, Instruction &inst);
 
 // BIC BIC_asimdimm_L_sl:
 //   0 x Rd       0
@@ -19782,9 +19780,7 @@ bool TryDecodeBIC_ASIMDIMM_L_HL(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // BIC  <Vd>.<T>, #<imm8>{, LSL #<amount>}
-bool TryDecodeBIC_ASIMDIMM_L_SL(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeBIC_ASIMDIMM_L_SL(const InstData &data, Instruction &inst);
 
 // SYS DC_SYS_CR_system:
 //   0 x Rt       0

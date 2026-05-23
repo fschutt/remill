@@ -1852,6 +1852,32 @@ DEF_SEM(MOVI_DS, V128W dst, I64 src) {
   return memory;
 }
 
+// M12.7: BIC (vector, immediate) — Vd[i] &= ~expanded_imm. Same immediate expansion as
+// MOVI (L_HL 16-bit / L_SL 32-bit) but AND-NOT into the existing dst lanes (dst is
+// read+write). Used by azul layout (scrollbar style from_ua_resolved).
+template <typename V>
+DEF_SEM(BIC_L_HL, V128W dst, V128 dst_in, I16 src) {
+  auto nimm = static_cast<uint16_t>(~Read(src));
+  auto cur = UReadV16(dst_in);
+  V res = {};
+  _Pragma("unroll") for (size_t i = 0; i < sizeof(V) / sizeof(res.elems[0]); ++i) {
+    res.elems[i] = UExtractV16(cur, i) & nimm;
+  }
+  UWriteV16(dst, res);
+  return memory;
+}
+template <typename V>
+DEF_SEM(BIC_L_SL, V128W dst, V128 dst_in, I32 src) {
+  auto nimm = static_cast<uint32_t>(~Read(src));
+  auto cur = UReadV32(dst_in);
+  V res = {};
+  _Pragma("unroll") for (size_t i = 0; i < sizeof(V) / sizeof(res.elems[0]); ++i) {
+    res.elems[i] = UExtractV32(cur, i) & nimm;
+  }
+  UWriteV32(dst, res);
+  return memory;
+}
+
 }  // namespace
 
 DEF_ISEL(MOVI_ASIMDIMM_D2_D) = MOVI_D2;
@@ -1861,6 +1887,10 @@ DEF_ISEL(MOVI_ASIMDIMM_L_HL_4H) = MOVI_L_HL<uint16v4_t>;
 DEF_ISEL(MOVI_ASIMDIMM_L_HL_8H) = MOVI_L_HL<uint16v8_t>;
 DEF_ISEL(MOVI_ASIMDIMM_L_SL_2S) = MOVI_L_SL<uint32v2_t>;
 DEF_ISEL(MOVI_ASIMDIMM_L_SL_4S) = MOVI_L_SL<uint32v4_t>;
+DEF_ISEL(BIC_ASIMDIMM_L_HL_4H) = BIC_L_HL<uint16v4_t>;
+DEF_ISEL(BIC_ASIMDIMM_L_HL_8H) = BIC_L_HL<uint16v8_t>;
+DEF_ISEL(BIC_ASIMDIMM_L_SL_2S) = BIC_L_SL<uint32v2_t>;
+DEF_ISEL(BIC_ASIMDIMM_L_SL_4S) = BIC_L_SL<uint32v4_t>;
 DEF_ISEL(MOVI_ASIMDIMM_M_SM_2S) = MOVI_L_SL<uint32v2_t>;
 DEF_ISEL(MOVI_ASIMDIMM_M_SM_4S) = MOVI_L_SL<uint32v4_t>;
 DEF_ISEL(MOVI_ASIMDIMM_D_DS) = MOVI_DS;
