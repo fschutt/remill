@@ -3095,6 +3095,25 @@ bool TryDecodeFADD_D_FLOATDP2(const InstData &data, Instruction &inst) {
   return TryDecodeFdW_Fn_Fm(data, inst, kRegD);
 }
 
+// M12.7: scalar FMINNM/FMAXNM (FLOATDP2) — same Fd/Fn/Fm decode as FADD; used by
+// azul's layout box-dimension clamping (UnresolvedBoxProps::resolve).
+// FMINNM  <Sd>, <Sn>, <Sm>
+bool TryDecodeFMINNM_S_FLOATDP2(const InstData &data, Instruction &inst) {
+  return TryDecodeFdW_Fn_Fm(data, inst, kRegS);
+}
+// FMINNM  <Dd>, <Dn>, <Dm>
+bool TryDecodeFMINNM_D_FLOATDP2(const InstData &data, Instruction &inst) {
+  return TryDecodeFdW_Fn_Fm(data, inst, kRegD);
+}
+// FMAXNM  <Sd>, <Sn>, <Sm>
+bool TryDecodeFMAXNM_S_FLOATDP2(const InstData &data, Instruction &inst) {
+  return TryDecodeFdW_Fn_Fm(data, inst, kRegS);
+}
+// FMAXNM  <Dd>, <Dn>, <Dm>
+bool TryDecodeFMAXNM_D_FLOATDP2(const InstData &data, Instruction &inst) {
+  return TryDecodeFdW_Fn_Fm(data, inst, kRegD);
+}
+
 // FMUL  <Hd>, <Hn>, <Hm>
 bool TryDecodeFMUL_H_FLOATDP2(const InstData &data, Instruction &inst) {
   return TryDecodeFdW_Fn_Fm(data, inst, kRegH);

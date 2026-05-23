@@ -226,6 +226,37 @@ DEF_SEM(FADD_Scalar64, V128W dst, V64 src1, V64 src2) {
   return memory;
 }
 
+// M12.7: scalar FMINNM/FMAXNM (FLOATDP2) = IEEE minNum/maxNum (NaN-aware: if one
+// operand is NaN, return the other). C fminf/fmaxf implement exactly minNum/maxNum.
+// Used by azul's layout box-dimension clamping (UnresolvedBoxProps::resolve).
+DEF_SEM(FMINNM_Scalar32, V128W dst, V32 src1, V32 src2) {
+  auto val1 = FExtractV32(FReadV32(src1), 0);
+  auto val2 = FExtractV32(FReadV32(src2), 0);
+  FWriteV32(dst, __builtin_fminf(val1, val2));
+  return memory;
+}
+
+DEF_SEM(FMINNM_Scalar64, V128W dst, V64 src1, V64 src2) {
+  auto val1 = FExtractV64(FReadV64(src1), 0);
+  auto val2 = FExtractV64(FReadV64(src2), 0);
+  FWriteV64(dst, __builtin_fmin(val1, val2));
+  return memory;
+}
+
+DEF_SEM(FMAXNM_Scalar32, V128W dst, V32 src1, V32 src2) {
+  auto val1 = FExtractV32(FReadV32(src1), 0);
+  auto val2 = FExtractV32(FReadV32(src2), 0);
+  FWriteV32(dst, __builtin_fmaxf(val1, val2));
+  return memory;
+}
+
+DEF_SEM(FMAXNM_Scalar64, V128W dst, V64 src1, V64 src2) {
+  auto val1 = FExtractV64(FReadV64(src1), 0);
+  auto val2 = FExtractV64(FReadV64(src2), 0);
+  FWriteV64(dst, __builtin_fmax(val1, val2));
+  return memory;
+}
+
 DEF_SEM(FSUB_Scalar32, V128W dst, V32 src1, V32 src2) {
   auto val1 = FExtractV32(FReadV32(src1), 0);
   auto val2 = FExtractV32(FReadV32(src2), 0);
@@ -460,6 +491,11 @@ DEF_ISEL(FSUB_D_FLOATDP2) = FSUB_Scalar64;
 
 DEF_ISEL(FADD_S_FLOATDP2) = FADD_Scalar32;
 DEF_ISEL(FADD_D_FLOATDP2) = FADD_Scalar64;
+
+DEF_ISEL(FMINNM_S_FLOATDP2) = FMINNM_Scalar32;
+DEF_ISEL(FMINNM_D_FLOATDP2) = FMINNM_Scalar64;
+DEF_ISEL(FMAXNM_S_FLOATDP2) = FMAXNM_Scalar32;
+DEF_ISEL(FMAXNM_D_FLOATDP2) = FMAXNM_Scalar64;
 
 DEF_ISEL(FMUL_S_FLOATDP2) = FMUL_Scalar32;
 DEF_ISEL(FMUL_D_FLOATDP2) = FMUL_Scalar64;
