@@ -5345,6 +5345,48 @@ bool TryDecodeSQXTN_ASIMDMISC_N(const InstData &data, Instruction &inst) {
   return true;
 }
 
+// M12.7: XTN/XTN2 — extract narrow. Identical operand shape to SQXTN (Q=0 dst-write
+// low half; Q=1 dst read+write high half). Arrangement = dest (Q?128:64, 8<<size).
+bool TryDecodeXTN_ASIMDMISC_N(const InstData &data, Instruction &inst) {
+  if (0x3 == data.size) {
+    return false;  // no 128->64 narrow
+  }
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 8ULL << data.size);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  if (data.Q) {
+    AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rd);
+  }
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  return true;
+}
+
+// M12.7: UZP1/UZP2 (ASIMDPERM) — three V-reg operands (Rd<-Rn,Rm), same arrangement
+// decode as ZIP1/ZIP2.
+bool TryDecodeUZP1_ASIMDPERM_ONLY(const InstData &data, Instruction &inst) {
+  if (data.size == 3 && !data.Q) {
+    return false;  // .2D requires Q==1
+  }
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 8ULL << data.size);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rm);
+  return true;
+}
+bool TryDecodeUZP2_ASIMDPERM_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeUZP1_ASIMDPERM_ONLY(data, inst);
+}
+
+// M12.7: LD1 single-structure single-lane, 32-bit (.S). Like LD1_ASISDLSO_D1_1D but a
+// 32-bit lane; the lane index for .S is (Q<<1)|S.
+bool TryDecodeLD1_ASISDLSO_S1_1S(const InstData &data, Instruction &inst) {
+  // No arrangement suffix: the ISEL is the bare form name LD1_ASISDLSO_S1_1S
+  // (single lane; the lane comes from the idx operand, not the arrangement).
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rt);
+  AddImmOperand(inst, (data.Q << 1) | data.S, kUnsigned, 8);
+  AddBasePlusOffsetMemOp(inst, kActionRead, 32, data.Rn, 0);
+  return true;
+}
+
 // M12.7: USHL (vector unsigned variable shift, ASIMDSAME) — size+Q arrangement, three
 // V-reg operands (Rd<-Rn,Rm).
 bool TryDecodeUSHL_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {

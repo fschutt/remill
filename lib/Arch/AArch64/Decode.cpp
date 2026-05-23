@@ -7954,9 +7954,7 @@ bool TryDecodeLD1_ASISDLSO_H1_1H(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // LD1  { <Vt>.S }[<index>], [<Xn|SP>]
-bool TryDecodeLD1_ASISDLSO_S1_1S(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeLD1_ASISDLSO_S1_1S(const InstData &data, Instruction &inst);
 
 // LD1 LD1_asisdlso_D1_1d:
 //   0 x Rt       0
@@ -14759,9 +14757,7 @@ bool TryDecodeLDEORLH_32_MEMOP(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // XTN{2}  <Vd>.<Tb>, <Vn>.<Ta>
-bool TryDecodeXTN_ASIMDMISC_N(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeXTN_ASIMDMISC_N(const InstData &data, Instruction &inst);
 
 // USQADD USQADD_asisdmisc_R:
 //   0 x Rd       0
@@ -28769,9 +28765,7 @@ bool TryDecodeLDTR_64_LDST_UNPRIV(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // UZP2  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeUZP2_ASIMDPERM_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeUZP2_ASIMDPERM_ONLY(const InstData &data, Instruction &inst);
 
 // SQRDMLSH SQRDMLSH_asisdsame2_only:
 //   0 x Rd       0
@@ -31495,9 +31489,7 @@ bool TryDecodeST1_ASISDLSOP_DX1_R1D(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // UZP1  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeUZP1_ASIMDPERM_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeUZP1_ASIMDPERM_ONLY(const InstData &data, Instruction &inst);
 
 // MLA MLA_asimdelem_R:
 //   0 x Rd       0

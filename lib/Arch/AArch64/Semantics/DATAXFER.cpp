@@ -1687,9 +1687,21 @@ DEF_SEM(LD1_SINGLE_LANE_64, V128W dst, I8 idx, M64 src) {
   return memory;
 }
 
+// M12.7: LD1 single-structure single-lane, 32-bit (.S). Insert the loaded word at
+// `idx` (= (Q<<1)|S), preserving the other lanes of Vt.
+DEF_SEM(LD1_SINGLE_LANE_32, V128W dst, I8 idx, M32 src) {
+  auto cur = UReadV32(dst);
+  auto val = Read(src);
+  auto lane = Read(idx);
+  auto out = UInsertV32(cur, lane, val);
+  UWriteV32(dst, out);
+  return memory;
+}
+
 }  // namespace
 
 DEF_ISEL(LD1_ASISDLSO_D1_1D) = LD1_SINGLE_LANE_64;
+DEF_ISEL(LD1_ASISDLSO_S1_1S) = LD1_SINGLE_LANE_32;
 
 namespace {
 

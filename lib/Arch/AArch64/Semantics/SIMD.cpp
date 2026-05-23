@@ -461,6 +461,74 @@ MAKE_ZIP(ZIP2_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4,  1)
 MAKE_ZIP(ZIP2_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2,  1)
 #undef MAKE_ZIP
 
+// M12.7: XTN/XTN2 — extract narrow (truncate each element to half width). XTN (Q=0)
+// writes the low half with the upper 64 bits zeroed; XTN2 (Q=1) writes the high half,
+// preserving the low half from dst_in. Used by azul's vectorized box-prop comparison
+// (UnresolvedBoxProps::resolve narrows a cmeq result before deinterleaving it).
+#define MAKE_XTN(NAME, RDV, EXV, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src) { \
+    auto s = RDV(src); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = EXV(s, i); /* narrowing assignment truncates */ \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_XTN(XTN_8B, UReadV16, UExtractV16, UWriteV8,  uint8v16_t, 8)
+MAKE_XTN(XTN_4H, UReadV32, UExtractV32, UWriteV16, uint16v8_t, 4)
+MAKE_XTN(XTN_2S, UReadV64, UExtractV64, UWriteV32, uint32v4_t, 2)
+
+#define MAKE_XTN2(NAME, RDV_W, EXV_W, RDV_N, EXV_N, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 dst_in, V128 src) { \
+    auto s = RDV_W(src); \
+    auto d = RDV_N(dst_in); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = EXV_N(d, i); \
+      res.elems[i + (NL)] = EXV_W(s, i); /* narrowing assignment truncates */ \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_XTN2(XTN2_16B, UReadV16, UExtractV16, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t, 8)
+MAKE_XTN2(XTN2_8H,  UReadV32, UExtractV32, UReadV16, UExtractV16, UWriteV16, uint16v8_t, 4)
+MAKE_XTN2(XTN2_4S,  UReadV64, UExtractV64, UReadV32, UExtractV32, UWriteV32, uint32v4_t, 2)
+#undef MAKE_XTN
+#undef MAKE_XTN2
+
+// M12.7: UZP1/UZP2 — unzip (deinterleave). UZP1 gathers the EVEN-indexed elements of
+// {src1, src2}; UZP2 the ODD-indexed. result = [n[k], n[k+2], ...(half) , m[k], ...]
+// where k = ODD (0 for UZP1, 1 for UZP2). Mirrors MAKE_ZIP above.
+#define MAKE_UZP(NAME, RDV, EXV, WRV, DV, NL, ODD) \
+  DEF_SEM(NAME, V128W dst, V128 src1, V128 src2) { \
+    auto v1 = RDV(src1); \
+    auto v2 = RDV(src2); \
+    DV res = {}; \
+    const size_t half = (NL) / 2; \
+    _Pragma("unroll") for (size_t i = 0; i < half; ++i) { \
+      res.elems[i] = EXV(v1, 2 * i + (ODD)); \
+      res.elems[half + i] = EXV(v2, 2 * i + (ODD)); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_UZP(UZP1_8B,  UReadV8,  UExtractV8,  UWriteV8,  uint8v8_t,   8,  0)
+MAKE_UZP(UZP1_16B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t,  16, 0)
+MAKE_UZP(UZP1_4H,  UReadV16, UExtractV16, UWriteV16, uint16v4_t,  4,  0)
+MAKE_UZP(UZP1_8H,  UReadV16, UExtractV16, UWriteV16, uint16v8_t,  8,  0)
+MAKE_UZP(UZP1_2S,  UReadV32, UExtractV32, UWriteV32, uint32v2_t,  2,  0)
+MAKE_UZP(UZP1_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4,  0)
+MAKE_UZP(UZP1_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2,  0)
+MAKE_UZP(UZP2_8B,  UReadV8,  UExtractV8,  UWriteV8,  uint8v8_t,   8,  1)
+MAKE_UZP(UZP2_16B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t,  16, 1)
+MAKE_UZP(UZP2_4H,  UReadV16, UExtractV16, UWriteV16, uint16v4_t,  4,  1)
+MAKE_UZP(UZP2_8H,  UReadV16, UExtractV16, UWriteV16, uint16v8_t,  8,  1)
+MAKE_UZP(UZP2_2S,  UReadV32, UExtractV32, UWriteV32, uint32v2_t,  2,  1)
+MAKE_UZP(UZP2_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4,  1)
+MAKE_UZP(UZP2_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2,  1)
+#undef MAKE_UZP
+
 // M12.7: vector FP min/max (FMAX/FMIN/FMAXNM/FMINNM ASIMDSAME) — per-lane FloatMax/
 // FloatMin (the helpers FMAXV/FMINV use). FMAXNM/FMINNM use the same op here (the
 // NaN-propagation distinction doesn't matter for finite layout values). Used by the
@@ -704,6 +772,31 @@ DEF_ISEL(FRINTA_ASIMDMISC_R_4S) = FRINTA_VEC_4S;
 DEF_ISEL(FRINTA_ASIMDMISC_R_2D) = FRINTA_VEC_2D;
 DEF_ISEL(SQXTN_ASIMDMISC_N_4H) = SQXTN_4H;
 DEF_ISEL(SQXTN_ASIMDMISC_N_8H) = SQXTN_8H;
+
+// M12.7: XTN/XTN2 (extract narrow) — Q=0 -> low half (_8B/_4H/_2S); Q=1 -> high half
+// (_16B/_8H/_4S, XTN2). DEF_ISEL suffix is the DEST arrangement.
+DEF_ISEL(XTN_ASIMDMISC_N_8B) = XTN_8B;
+DEF_ISEL(XTN_ASIMDMISC_N_4H) = XTN_4H;
+DEF_ISEL(XTN_ASIMDMISC_N_2S) = XTN_2S;
+DEF_ISEL(XTN_ASIMDMISC_N_16B) = XTN2_16B;
+DEF_ISEL(XTN_ASIMDMISC_N_8H) = XTN2_8H;
+DEF_ISEL(XTN_ASIMDMISC_N_4S) = XTN2_4S;
+
+// M12.7: UZP1/UZP2 (unzip / deinterleave even/odd).
+DEF_ISEL(UZP1_ASIMDPERM_ONLY_8B)  = UZP1_8B;
+DEF_ISEL(UZP1_ASIMDPERM_ONLY_16B) = UZP1_16B;
+DEF_ISEL(UZP1_ASIMDPERM_ONLY_4H)  = UZP1_4H;
+DEF_ISEL(UZP1_ASIMDPERM_ONLY_8H)  = UZP1_8H;
+DEF_ISEL(UZP1_ASIMDPERM_ONLY_2S)  = UZP1_2S;
+DEF_ISEL(UZP1_ASIMDPERM_ONLY_4S)  = UZP1_4S;
+DEF_ISEL(UZP1_ASIMDPERM_ONLY_2D)  = UZP1_2D;
+DEF_ISEL(UZP2_ASIMDPERM_ONLY_8B)  = UZP2_8B;
+DEF_ISEL(UZP2_ASIMDPERM_ONLY_16B) = UZP2_16B;
+DEF_ISEL(UZP2_ASIMDPERM_ONLY_4H)  = UZP2_4H;
+DEF_ISEL(UZP2_ASIMDPERM_ONLY_8H)  = UZP2_8H;
+DEF_ISEL(UZP2_ASIMDPERM_ONLY_2S)  = UZP2_2S;
+DEF_ISEL(UZP2_ASIMDPERM_ONLY_4S)  = UZP2_4S;
+DEF_ISEL(UZP2_ASIMDPERM_ONLY_2D)  = UZP2_2D;
 
 // M12.7: vector FP min/max (FMAX/FMIN/FMAXNM/FMINNM ASIMDSAME). NM variants reuse the
 // same per-lane FloatMax/FloatMin (NaN distinction irrelevant for finite layout values).
