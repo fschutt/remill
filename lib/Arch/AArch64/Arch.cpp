@@ -3242,6 +3242,29 @@ bool TryDecodeFCMP_S_FLOATCMP(const InstData &data, Instruction &inst) {
   return TryDecodeFn_Fm(data, inst, kRegS);
 }
 
+// M12.7: FCCMP/FCCMPE <Sn>, <Sm>, #<nzcv>, <cond>. Conditional-function name (cond
+// suffix) + Fn, Fm, #nzcv operands. Modeled on FCMP (Fn/Fm) + CCMP (cond + nzcv).
+bool TryDecodeFCCMP_S_FLOATCCMP(const InstData &data, Instruction &inst) {
+  SetConditionalFunctionName(data, inst);
+  AddRegOperand(inst, kActionRead, kRegS, kUseAsValue, data.Rn);
+  AddRegOperand(inst, kActionRead, kRegS, kUseAsValue, data.Rm);
+  AddImmOperand(inst, data.nzcv);
+  return true;
+}
+bool TryDecodeFCCMP_D_FLOATCCMP(const InstData &data, Instruction &inst) {
+  SetConditionalFunctionName(data, inst);
+  AddRegOperand(inst, kActionRead, kRegD, kUseAsValue, data.Rn);
+  AddRegOperand(inst, kActionRead, kRegD, kUseAsValue, data.Rm);
+  AddImmOperand(inst, data.nzcv);
+  return true;
+}
+bool TryDecodeFCCMPE_S_FLOATCCMP(const InstData &data, Instruction &inst) {
+  return TryDecodeFCCMP_S_FLOATCCMP(data, inst);
+}
+bool TryDecodeFCCMPE_D_FLOATCCMP(const InstData &data, Instruction &inst) {
+  return TryDecodeFCCMP_D_FLOATCCMP(data, inst);
+}
+
 // FABS  <Sd>, <Sn>
 bool TryDecodeFABS_S_FLOATDP1(const InstData &data, Instruction &inst) {
   if (IsUnallocatedFloatEncoding(data)) {
@@ -4408,6 +4431,21 @@ bool TryDecodeSCVTF_ASIMDMISC_R(const InstData &data, Instruction &inst) {
 }
 bool TryDecodeUCVTF_ASIMDMISC_R(const InstData &data, Instruction &inst) {
   return TryDecodeCVTF_ASIMDMISC(data, inst);
+}
+
+// M12.7: scalar single-element SCVTF (ASISDMISC, `scvtf s,s` / `scvtf d,d`). sz bit
+// selects S (0) / D (1); append the suffix so the ISEL picks the right width.
+bool TryDecodeSCVTF_ASISDMISC_R(const InstData &data, Instruction &inst) {
+  if (data.sz) {
+    inst.function += "_D";
+    AddRegOperand(inst, kActionWrite, kRegD, kUseAsValue, data.Rd);
+    AddRegOperand(inst, kActionRead, kRegD, kUseAsValue, data.Rn);
+  } else {
+    inst.function += "_S";
+    AddRegOperand(inst, kActionWrite, kRegS, kUseAsValue, data.Rd);
+    AddRegOperand(inst, kActionRead, kRegS, kUseAsValue, data.Rn);
+  }
+  return true;
 }
 
 // M12.7: DUP element (DUP_ASIMDINS_DV_V) — broadcast Vn.<Ts>[index] to all lanes.

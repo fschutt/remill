@@ -300,6 +300,20 @@ DEF_SEM(SCVTF_Int64ToFloat64, V128W dst, R64 src) {
   return memory;
 }
 
+// M12.7: scalar single-element SCVTF (ASISDMISC, `scvtf s,s` / `scvtf d,d`) — the signed
+// integer in the low element of the FP/SIMD reg, converted to float. Used by azul layout
+// (layout_bfc) for int->float on values already in vector regs.
+DEF_SEM(SCVTF_Scalar32, V128W dst, V32 src) {
+  auto res = CheckedCast<int32_t, float32_t>(state, SExtractV32(SReadV32(src), 0));
+  FWriteV32(dst, res);
+  return memory;
+}
+DEF_SEM(SCVTF_Scalar64, V128W dst, V64 src) {
+  auto res = CheckedCast<int64_t, float64_t>(state, SExtractV64(SReadV64(src), 0));
+  FWriteV64(dst, res);
+  return memory;
+}
+
 }  // namespace
 
 // TODO(pag): SCVTF_H32_FLOAT2INT.
@@ -309,3 +323,5 @@ DEF_ISEL(SCVTF_S32_FLOAT2INT) = SCVTF_Int32ToFloat32;
 DEF_ISEL(SCVTF_D32_FLOAT2INT) = SCVTF_Int32ToFloat64;
 DEF_ISEL(SCVTF_S64_FLOAT2INT) = SCVTF_Int64ToFloat32;
 DEF_ISEL(SCVTF_D64_FLOAT2INT) = SCVTF_Int64ToFloat64;
+DEF_ISEL(SCVTF_ASISDMISC_R_S) = SCVTF_Scalar32;
+DEF_ISEL(SCVTF_ASISDMISC_R_D) = SCVTF_Scalar64;

@@ -17222,9 +17222,7 @@ bool TryDecodeSCVTF_ASISDMISCFP16_R(const InstData &, Instruction &) {
 //  30 1
 //  31 0
 // SCVTF  <V><d>, <V><n>
-bool TryDecodeSCVTF_ASISDMISC_R(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeSCVTF_ASISDMISC_R(const InstData &data, Instruction &inst);
 
 // SCVTF SCVTF_asimdmiscfp16_R:
 //   0 x Rd       0
@@ -29561,9 +29559,7 @@ bool TryDecodeFCCMPE_H_FLOATCCMP(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FCCMPE  <Sn>, <Sm>, #<nzcv>, <cond>
-bool TryDecodeFCCMPE_S_FLOATCCMP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFCCMPE_S_FLOATCCMP(const InstData &data, Instruction &inst);
 
 // FCCMPE FCCMPE_D_floatccmp:
 //   0 x nzcv     0
@@ -29599,9 +29595,7 @@ bool TryDecodeFCCMPE_S_FLOATCCMP(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FCCMPE  <Dn>, <Dm>, #<nzcv>, <cond>
-bool TryDecodeFCCMPE_D_FLOATCCMP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFCCMPE_D_FLOATCCMP(const InstData &data, Instruction &inst);
 
 // FMAXP FMAXP_asimdsamefp16_only:
 //   0 x Rd       0
@@ -41556,9 +41550,7 @@ bool TryDecodeFCCMP_H_FLOATCCMP(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FCCMP  <Sn>, <Sm>, #<nzcv>, <cond>
-bool TryDecodeFCCMP_S_FLOATCCMP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFCCMP_S_FLOATCCMP(const InstData &data, Instruction &inst);
 
 // FCCMP FCCMP_D_floatccmp:
 //   0 x nzcv     0
@@ -41594,9 +41586,7 @@ bool TryDecodeFCCMP_S_FLOATCCMP(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FCCMP  <Dn>, <Dm>, #<nzcv>, <cond>
-bool TryDecodeFCCMP_D_FLOATCCMP(const InstData &, Instruction &) {
-  return false;
-}
+extern bool TryDecodeFCCMP_D_FLOATCCMP(const InstData &data, Instruction &inst);
 
 // LD3 LD3_asisdlso_B3_3b:
 //   0 x Rt       0

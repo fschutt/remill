@@ -178,7 +178,58 @@ DEF_SEM(CCMN, S1 src1, S2 src2, S2 nzcv) {
   }
   return memory;
 }
+
+// M12.7: FCCMP/FCCMPE (FP conditional compare). If <cond> holds, set NZCV from the FP
+// comparison of Sn/Dn vs Sm/Dm; otherwise set NZCV directly from the #nzcv immediate.
+// (FCCMPE only differs in NaN signaling, which doesn't affect the NZCV result we model.)
+// Used by azul's layout (layout_bfc) for clamped FP comparisons.
+template <bool (*check_cond)(const State &)>
+DEF_SEM(FCCMP_S, V32 src1, V32 src2, I32 nzcv) {
+  if (check_cond(state)) {
+    auto val1 = FExtractV32(FReadV32(src1), 0);
+    auto val2 = FExtractV32(FReadV32(src2), 0);
+    FCompare(state, val1, val2, false);
+  } else {
+    auto nzcv_val = Read(nzcv);
+    FLAG_V = UCmpNeq(UAnd(nzcv_val, uint32_t(1)), uint32_t(0));
+    FLAG_C = UCmpNeq(UAnd(nzcv_val, uint32_t(2)), uint32_t(0));
+    FLAG_Z = UCmpNeq(UAnd(nzcv_val, uint32_t(4)), uint32_t(0));
+    FLAG_N = UCmpNeq(UAnd(nzcv_val, uint32_t(8)), uint32_t(0));
+  }
+  return memory;
+}
+template <bool (*check_cond)(const State &)>
+DEF_SEM(FCCMP_D, V64 src1, V64 src2, I32 nzcv) {
+  if (check_cond(state)) {
+    auto val1 = FExtractV64(FReadV64(src1), 0);
+    auto val2 = FExtractV64(FReadV64(src2), 0);
+    FCompare(state, val1, val2, false);
+  } else {
+    auto nzcv_val = Read(nzcv);
+    FLAG_V = UCmpNeq(UAnd(nzcv_val, uint32_t(1)), uint32_t(0));
+    FLAG_C = UCmpNeq(UAnd(nzcv_val, uint32_t(2)), uint32_t(0));
+    FLAG_Z = UCmpNeq(UAnd(nzcv_val, uint32_t(4)), uint32_t(0));
+    FLAG_N = UCmpNeq(UAnd(nzcv_val, uint32_t(8)), uint32_t(0));
+  }
+  return memory;
+}
 }  // namespace
+
+// FCCMP has no extra template args, so DEF_COND_ISEL (which appends __VA_ARGS__) won't
+// work — expand the 15 conditions directly.
+#define DEF_FCCMP_ISEL(isel, sem) \
+  DEF_ISEL(isel##_GE) = sem<CondGE>; DEF_ISEL(isel##_GT) = sem<CondGT>; \
+  DEF_ISEL(isel##_LE) = sem<CondLE>; DEF_ISEL(isel##_LT) = sem<CondLT>; \
+  DEF_ISEL(isel##_EQ) = sem<CondEQ>; DEF_ISEL(isel##_NE) = sem<CondNE>; \
+  DEF_ISEL(isel##_CS) = sem<CondCS>; DEF_ISEL(isel##_CC) = sem<CondCC>; \
+  DEF_ISEL(isel##_MI) = sem<CondMI>; DEF_ISEL(isel##_PL) = sem<CondPL>; \
+  DEF_ISEL(isel##_VS) = sem<CondVS>; DEF_ISEL(isel##_VC) = sem<CondVC>; \
+  DEF_ISEL(isel##_HI) = sem<CondHI>; DEF_ISEL(isel##_LS) = sem<CondLS>; \
+  DEF_ISEL(isel##_AL) = sem<CondAL>;
+DEF_FCCMP_ISEL(FCCMP_S_FLOATCCMP, FCCMP_S)
+DEF_FCCMP_ISEL(FCCMP_D_FLOATCCMP, FCCMP_D)
+DEF_FCCMP_ISEL(FCCMPE_S_FLOATCCMP, FCCMP_S)
+DEF_FCCMP_ISEL(FCCMPE_D_FLOATCCMP, FCCMP_D)
 
 DEF_COND_ISEL(CCMP_32_CONDCMP_IMM, CCMP, R32, I32)
 DEF_COND_ISEL(CCMP_64_CONDCMP_IMM, CCMP, R64, I64)
