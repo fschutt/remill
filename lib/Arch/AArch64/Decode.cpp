@@ -12797,9 +12797,8 @@ bool TryDecodeSTR_D_LDST_IMMPOST(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 0 size     1
 // STR  <Qt>, [<Xn|SP>], #<simm>
-bool TryDecodeSTR_Q_LDST_IMMPOST(const InstData &, Instruction &) {
-  return false;
-}
+// M12.7: implemented in Arch.cpp (post-index 128-bit store; auto-vectorizer emits it).
+extern bool TryDecodeSTR_Q_LDST_IMMPOST(const InstData &data, Instruction &inst);
 
 // STR STR_B_ldst_immpre:
 //   0 x Rt       0
@@ -17558,9 +17557,8 @@ bool TryDecodeSMNEGL_SMSUBL_64WA_DP_3SRC(const InstData &, Instruction &) {
 //  30 1
 //  31 0
 // MOV  <V><d>, <Vn>.<T>[<index>]
-bool TryDecodeMOV_DUP_ASISDONE_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+// M12.7: implemented in Arch.cpp (MOV alias of scalar DUP-element).
+extern bool TryDecodeMOV_DUP_ASISDONE_ONLY(const InstData &data, Instruction &inst);
 
 // SMADDL SMULL_SMADDL_64WA_dp_3src:
 //   0 x Rd       0
@@ -20990,9 +20988,10 @@ bool TryDecodeSWPLH_32_MEMOP(const InstData &, Instruction &) {
 //  30 1
 //  31 0
 // DUP  <V><d>, <Vn>.<T>[<index>]
-bool TryDecodeDUP_ASISDONE_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+// M12.7: implemented in Arch.cpp (where AddRegOperand / LeastSignificantSetBit live).
+// Scalar DUP-element (`mov s1,v0.s[3]`) is emitted by the Rust auto-vectorizer in the
+// layout box-model math; the return-false stub → __remill_error → layout diverged.
+extern bool TryDecodeDUP_ASISDONE_ONLY(const InstData &data, Instruction &inst);
 
 // DUP DUP_asimdins_DV_v:
 //   0 x Rd       0

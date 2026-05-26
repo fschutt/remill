@@ -1003,6 +1003,7 @@ DEF_ISEL(STUR_Q_LDST_UNSCALED) = STR_Q;
 DEF_ISEL(STR_Q_LDST_REGOFF) = STR_Q_FromOffset;
 
 DEF_ISEL(STR_Q_LDST_IMMPRE) = STR_Q_UpdateIndex;
+DEF_ISEL(STR_Q_LDST_IMMPOST) = STR_Q_UpdateIndex;  // M12.7: post-index 128-bit store
 
 namespace {
 

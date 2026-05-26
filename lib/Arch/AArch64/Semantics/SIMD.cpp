@@ -429,6 +429,24 @@ MAKE_DUP_ELT(DUP_ELT_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4)
 MAKE_DUP_ELT(DUP_ELT_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  2)
 #undef MAKE_DUP_ELT
 
+// M12.7: SCALAR DUP element (DUP_ASISDONE / `MOV <V><d>, <Vn>.<T>[index]`) —
+// extract ONE lane[index] of Vn into the scalar FP reg Vd, zeroing the upper
+// bits (scalar-write semantics: write a 128-bit vector with lane0=val, rest 0).
+#define MAKE_DUP_SCALAR(NAME, RDV, EXV, WRV, DV) \
+  DEF_SEM(NAME, V128W dst, V128 src, I64 index) { \
+    auto v = RDV(src); \
+    auto val = EXV(v, Read(index)); \
+    DV res = {}; \
+    res.elems[0] = val; \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_DUP_SCALAR(DUP_SCALAR_B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t)
+MAKE_DUP_SCALAR(DUP_SCALAR_H, UReadV16, UExtractV16, UWriteV16, uint16v8_t)
+MAKE_DUP_SCALAR(DUP_SCALAR_S, UReadV32, UExtractV32, UWriteV32, uint32v4_t)
+MAKE_DUP_SCALAR(DUP_SCALAR_D, UReadV64, UExtractV64, UWriteV64, uint64v2_t)
+#undef MAKE_DUP_SCALAR
+
 // M12.7: ZIP1/ZIP2 (ASIMDPERM) — interleave the low (ZIP1) or high (ZIP2) halves of
 // two vectors: res[2i]=src1[base+i], res[2i+1]=src2[base+i], base = HI ? n/2 : 0.
 #define MAKE_ZIP(NAME, RDV, EXV, WRV, DV, NL, HI) \
@@ -745,6 +763,17 @@ DEF_ISEL(DUP_ASIMDINS_DV_V_8H)  = DUP_ELT_8H;
 DEF_ISEL(DUP_ASIMDINS_DV_V_2S)  = DUP_ELT_2S;
 DEF_ISEL(DUP_ASIMDINS_DV_V_4S)  = DUP_ELT_4S;
 DEF_ISEL(DUP_ASIMDINS_DV_V_2D)  = DUP_ELT_2D;
+
+// M12.7: scalar DUP element (DUP_ASISDONE_ONLY) + its MOV alias — both decode to
+// the appended size suffix (_B/_H/_S/_D) and share the DUP_SCALAR semantics.
+DEF_ISEL(DUP_ASISDONE_ONLY_B) = DUP_SCALAR_B;
+DEF_ISEL(DUP_ASISDONE_ONLY_H) = DUP_SCALAR_H;
+DEF_ISEL(DUP_ASISDONE_ONLY_S) = DUP_SCALAR_S;
+DEF_ISEL(DUP_ASISDONE_ONLY_D) = DUP_SCALAR_D;
+DEF_ISEL(MOV_DUP_ASISDONE_ONLY_B) = DUP_SCALAR_B;
+DEF_ISEL(MOV_DUP_ASISDONE_ONLY_H) = DUP_SCALAR_H;
+DEF_ISEL(MOV_DUP_ASISDONE_ONLY_S) = DUP_SCALAR_S;
+DEF_ISEL(MOV_DUP_ASISDONE_ONLY_D) = DUP_SCALAR_D;
 
 // M12.7: ZIP1/ZIP2 (ASIMDPERM), all arrangements.
 DEF_ISEL(ZIP1_ASIMDPERM_ONLY_8B)  = ZIP1_8B;

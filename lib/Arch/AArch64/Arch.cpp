@@ -3461,6 +3461,26 @@ bool TryDecodeSTR_Q_LDST_IMMPRE(const InstData &data, Instruction &inst) {
   return TryDecodeSTR_Vn_LDST_IMMPRE(data, inst, kRegQ);
 }
 
+// M12.7: STR <Qt>, [<Xn|SP>], #<simm> (POST-index). Same as IMMPRE but the base
+// is written back AFTER the store (AddPostIndexMemOp). The Rust auto-vectorizer
+// emits `str q0,[x],#0x10` storing a 4×u32/16-byte struct (e.g. the rect-extract
+// loop). Decode.cpp had this as a return-false stub → __remill_error.
+static bool TryDecodeSTR_Vn_LDST_IMMPOST(const InstData &data, Instruction &inst,
+                                         RegClass val_class) {
+  uint64_t scale = DecodeScale(data);
+  if (scale < 4) {
+    return false;
+  }
+  auto num_bits = ReadRegSize(val_class);
+  AddRegOperand(inst, kActionRead, val_class, kUseAsValue, data.Rt);
+  uint64_t offset = static_cast<uint64_t>(data.imm9.simm9);
+  AddPostIndexMemOp(inst, kActionWrite, num_bits, data.Rn, offset);
+  return true;
+}
+bool TryDecodeSTR_Q_LDST_IMMPOST(const InstData &data, Instruction &inst) {
+  return TryDecodeSTR_Vn_LDST_IMMPOST(data, inst, kRegQ);
+}
+
 static bool TryDecodeLDR_Vn_LDST_POS(const InstData &data, Instruction &inst,
                                      RegClass val_class) {
   uint64_t scale = DecodeScale(data);
@@ -4462,6 +4482,28 @@ bool TryDecodeDUP_ASIMDINS_DV_V(const InstData &data, Instruction &inst) {
   AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
   AddImmOperand(inst, index);
   return true;
+}
+
+// M12.7: SCALAR DUP element (DUP_ASISDONE_ONLY) + its MOV alias —
+//   `DUP/MOV <V><d>, <Vn>.<Ts>[index]` extracts ONE lane into the scalar FP reg Vd
+//   (upper bits zeroed). imm5 encodes size (lowest set bit) + index. The Rust
+//   auto-vectorizer emits `mov s1,v0.s[3]` in the layout box-model math. Append a
+//   size suffix so the ISEL picks the DUP_SCALAR_{B,H,S,D} semantic.
+bool TryDecodeDUP_ASISDONE_ONLY(const InstData &data, Instruction &inst) {
+  uint64_t size = 0;
+  if (!LeastSignificantSetBit(data.imm5.uimm, &size) || size > 3) {
+    return false;  // imm5[3:0] == 0 is reserved
+  }
+  const uint64_t index = data.imm5.uimm >> (size + 1);
+  static const char *const kSfx[] = {"_B", "_H", "_S", "_D"};
+  inst.function += kSfx[size];
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddImmOperand(inst, index);
+  return true;
+}
+bool TryDecodeMOV_DUP_ASISDONE_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeDUP_ASISDONE_ONLY(data, inst);
 }
 
 // M12.7: ZIP1/ZIP2 (ASIMDPERM) — interleave halves of two vectors. Shared decode.

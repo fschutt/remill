@@ -166,19 +166,30 @@ struct SimpleTraceManager : remill::TraceManager {
         if (it == memory.end()) { got = false; break; }
         w |= static_cast<uint32_t>(it->second) << (8 * i);
       }
-      if (got && (w >> 24) == 0x8Bu && ((w >> 10) & 0x3Fu) == 2u) {
-        is_jumptable = true;  // `add Xd, Xn, Xm, lsl #2`
+      // Two AArch64 jump-table dispatch forms:
+      //   (a) `add Xd, Xn, Xm, lsl #2; br Xd`  — offset == index*4 directly.
+      //   (b) `adr X; ldrsw Xt,[Xn,Xm,lsl #2]; add Xd,X,Xt; br Xd` — Rust's common
+      //       PC-relative signed-offset table (lsl#2 is on the LDRSW, not the add).
+      // Detect (b) via the table load `ldrsw Xt,[Xn,Xm,lsl #2]`
+      // (bits[31:21]==0b10111000101==0x5C5, bits[15:10]==0b011110==0x1E: option=LSL,S=1).
+      bool add_lsl2 = ((w >> 24) == 0x8Bu) && (((w >> 10) & 0x3Fu) == 2u);
+      bool ldrsw_lsl2 = ((w >> 21) == 0x5C5u) && (((w >> 10) & 0x3Fu) == 0x1Eu);
+      if (got && (add_lsl2 || ldrsw_lsl2)) {
+        is_jumptable = true;
         break;
       }
     }
     if (!is_jumptable) {
       return;
     }
-    // Skip devirt for very large fns (e.g. the TrueType hinting bytecode
-    // interpreter, which has many dispatch jump tables) — sweeping them blows up
-    // the lifted IR, and they aren't needed for the bare-body layout (their `br`
-    // stays the harmless no-op __remill_jump, as before the devirt).
-    if (memory.rbegin()->first - memory.begin()->first > 12288) {
+    // Skip devirt for VERY large fns (e.g. taffy grid track-sizing ~65 KB and the
+    // TrueType hinting bytecode interpreter, which have many dispatch jump tables) —
+    // sweeping them blows up the lifted IR, and they aren't on the bare-body layout
+    // path. 24576 covers layout_document/layout_bfc/layout_ifc (~20-23 KB, the block
+    // path) while still excluding the ~65 KB grid track-sizing. (Was 12288, which
+    // excluded calc_used_size's callers and left their match-tables as missing_blocks
+    // → mis-lifted CSS matches → non-deterministic 0 widths.)
+    if (memory.rbegin()->first - memory.begin()->first > 24576) {
       return;
     }
     // Bound to a window around the jump (arms are near the dispatch) so we don't
