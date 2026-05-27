@@ -84,6 +84,11 @@ DEFINE_string(signature, "", "Function signature \"reg_out(reg_in,...)\"");
 DEFINE_bool(mute_state_escape, false, "Mute state escape");
 DEFINE_bool(symbolic_regs, false, "Set registers to a symbolic value");
 
+// M12.7: extra non-contiguous memory regions for the lifter (e.g. jump-table
+// .rodata), so ForEachDevirtualizedTarget can read EXACT jump-table targets
+// instead of over-sweeping a window. Format: "<addrhex>:<bytehex>;<addrhex>:<bytehex>".
+DEFINE_string(extra_data, "", "Extra memory regions: <addrhex>:<bytehex>;...");
+
 using Memory = std::map<uint64_t, uint8_t>;
 
 // Unhexlify the data passed to `-bytes`, and fill in `memory` with each
@@ -185,15 +190,137 @@ struct SimpleTraceManager : remill::TraceManager {
     // Skip devirt for VERY large fns (e.g. taffy grid track-sizing ~65 KB and the
     // TrueType hinting bytecode interpreter, which have many dispatch jump tables) —
     // sweeping them blows up the lifted IR, and they aren't on the bare-body layout
-    // path. 24576 covers layout_document/layout_bfc/layout_ifc (~20-23 KB, the block
-    // path) while still excluding the ~65 KB grid track-sizing. (Was 12288, which
-    // excluded calc_used_size's callers and left their match-tables as missing_blocks
-    // → mis-lifted CSS matches → non-deterministic 0 widths.)
-    if (memory.rbegin()->first - memory.begin()->first > 24576) {
-      return;
+    // path. M12.7: cap on the CONTIGUOUS CODE BLOCK around inst.pc, NOT the full
+    // memory-map span. The span includes far-away mirrored .rodata (the jump-table
+    // byte-offset tables + string/panic constants) whose distance from the code is
+    // irrelevant to function complexity — and it wrongly excluded calc_used_size
+    // (its jump-table data sits far in .rodata), leaving calc's SizeMetric/box-sizing
+    // match-tables as __remill_jump → a remill PC-dispatch loop (while{switch(PC)})
+    // whose loop-carried phis mis-deliver the f32 width (body came out 0). The
+    // contiguous code extent is the right proxy: ~6 KB for calc_used_size (devirt OK)
+    // vs ~65 KB for grid track-sizing (still excluded). 24576 covers
+    // layout_document/bfc/ifc (~20-23 KB) too.
+    {
+      uint64_t clo = inst.pc, chi = inst.pc, guard = 0;
+      while (memory.count(clo - 1) && ++guard < (1u << 18)) { clo--; }
+      guard = 0;
+      while (memory.count(chi + 1) && ++guard < (1u << 18)) { chi++; }
+      if (chi - clo > 24576) {
+        return;
+      }
     }
-    // Bound to a window around the jump (arms are near the dispatch) so we don't
-    // sweep the whole fn for every indirect jump (that blows up the lifted IR).
+    // M12.7: decode the EXACT jump-table targets so the devirt emits ONLY the real arm
+    // blocks — NOT the helper-return / continuation addresses a window sweep would add as
+    // spurious switch cases (those create dispatch edges into call-return blocks where a
+    // callee's f32 return isn't in State yet → calc_used_size's body width came out 0).
+    // The .rodata offset table is provided to the lifter via --extra_data. Forms:
+    //   adrp Xb,#pg ; add Xb,Xb,#off            -> Xb = table base
+    //   adr  Xt,ARM                             -> ARM = arm-block base
+    //   ldrb/ldrh Wd,[Xb,Xi{,lsl#k}] (or ldrsw) -> tbl[i] (1/2/4 bytes)
+    //   add  Xt,Xt,Wd,lsl#2 (compact) / add Xt,Xt,Xd (ldrsw) ; br Xt
+    // Fall back to a bounded window sweep if any field can't be decoded (no regression).
+    auto read32 = [&](uint64_t a, uint32_t &w) -> bool {
+      w = 0;
+      for (int i = 0; i < 4; i++) {
+        auto it = memory.find(a + static_cast<uint64_t>(i));
+        if (it == memory.end()) return false;
+        w |= static_cast<uint32_t>(it->second) << (8 * i);
+      }
+      return true;
+    };
+    {
+      uint64_t arm_block = 0, tbl_base = 0;
+      int elem = 0, ldr_base_reg = -1, idx_reg = -1, n_entries = -1;
+      bool scaled4 = false;
+      for (int k = 1; k <= 12 && inst.pc >= static_cast<uint64_t>(4 * k); k++) {
+        uint32_t w;
+        if (!read32(inst.pc - 4 * k, w)) continue;
+        if (((w >> 24) & 0x9F) == 0x10 && arm_block == 0) {   // ADR -> arm block
+          int64_t immlo = (w >> 29) & 3, immhi = (w >> 5) & 0x7FFFF;
+          int64_t imm21 = (immhi << 2) | immlo;
+          if (imm21 & (1LL << 20)) imm21 |= ~((1LL << 21) - 1);
+          arm_block = (inst.pc - 4 * k) + static_cast<uint64_t>(imm21);
+        } else if ((w >> 21) == 0x1C3) {            // LDRB (reg)
+          elem = 1; scaled4 = true;
+          ldr_base_reg = (w >> 5) & 0x1F; idx_reg = (w >> 16) & 0x1F;
+        } else if ((w >> 21) == 0x3C3) {            // LDRH (reg)  [size=01]
+          elem = 2; scaled4 = true;
+          ldr_base_reg = (w >> 5) & 0x1F; idx_reg = (w >> 16) & 0x1F;
+        } else if ((w >> 21) == 0x5C5) {            // LDRSW (reg)
+          elem = 4; scaled4 = false;
+          ldr_base_reg = (w >> 5) & 0x1F; idx_reg = (w >> 16) & 0x1F;
+        }
+      }
+      // Bounds: cmp Xidx,#N / cmp Widx,#N (subs Xzr,Xidx,#imm) guards the table
+      // index, so the table has exactly N entries. Read EXACTLY N (no over-read
+      // of post-table arm code that happens to land in [arm_block,+8192]).
+      if (idx_reg >= 0) {
+        for (int k = 1; k <= 24 && inst.pc >= static_cast<uint64_t>(4 * k); k++) {
+          uint32_t w;
+          if (!read32(inst.pc - 4 * k, w)) continue;
+          if (((w >> 24) == 0xF1 || (w >> 24) == 0x71) &&   // SUBS (imm), sf=1/0
+              (w & 0x1F) == 0x1F &&                          // Rd == zr (cmp)
+              static_cast<int>((w >> 5) & 0x1F) == idx_reg) {  // Rn == idx
+            uint64_t imm = (w >> 10) & 0xFFF;
+            if ((w >> 22) & 1) imm <<= 12;
+            n_entries = static_cast<int>(imm);                // N (count, not max)
+            break;
+          }
+        }
+      }
+      if (ldr_base_reg >= 0) {                       // wide scan: table base
+        for (int k = 1; k <= 160 && inst.pc >= static_cast<uint64_t>(4 * k); k++) {
+          uint32_t w;
+          if (!read32(inst.pc - 4 * k, w)) continue;
+          if ((w >> 24) == 0x91 &&
+              static_cast<int>(w & 0x1F) == ldr_base_reg &&
+              static_cast<int>((w >> 5) & 0x1F) == ldr_base_reg) {  // add Xb,Xb,#imm
+            uint64_t imm = (w >> 10) & 0xFFF;
+            if ((w >> 22) & 1) imm <<= 12;
+            uint32_t aw;
+            if (read32(inst.pc - 4 * k - 4, aw) && ((aw >> 24) & 0x9F) == 0x90 &&
+                static_cast<int>(aw & 0x1F) == ldr_base_reg) {       // adrp Xb
+              int64_t lo2 = (aw >> 29) & 3, hi2 = (aw >> 5) & 0x7FFFF, im = (hi2 << 2) | lo2;
+              if (im & (1LL << 20)) im |= ~((1LL << 21) - 1);
+              uint64_t apc = inst.pc - 4 * k - 4;
+              tbl_base = ((apc & ~uint64_t(0xFFF)) + (static_cast<uint64_t>(im) << 12)) + imm;
+              break;
+            }
+          }
+        }
+      }
+      if (arm_block && tbl_base && elem > 0) {
+        std::vector<uint64_t> targets;
+        int limit = (n_entries > 0 && n_entries <= 256) ? n_entries : 256;
+        for (int i = 0; i < limit; i++) {
+          uint64_t off = 0; bool got = true;
+          for (int b = 0; b < elem; b++) {
+            auto it = memory.find(tbl_base + static_cast<uint64_t>(i * elem + b));
+            if (it == memory.end()) { got = false; break; }
+            off |= static_cast<uint64_t>(it->second) << (8 * b);
+          }
+          if (!got) break;
+          uint64_t tgt = scaled4
+              ? (arm_block + off * 4)
+              : (arm_block + static_cast<uint64_t>(
+                                static_cast<int64_t>(static_cast<int32_t>(off))));
+          if (tgt < arm_block || tgt > arm_block + 8192 ||
+              memory.find(tgt) == memory.end()) {
+            break;  // past the end of the table
+          }
+          bool dup = false;
+          for (uint64_t e : targets) { if (e == tgt) { dup = true; break; } }
+          if (!dup) targets.push_back(tgt);
+        }
+        if (!targets.empty() && targets.size() <= 256) {
+          for (uint64_t t : targets) {
+            func(t, remill::DevirtualizedTargetKind::kTraceLocal);
+          }
+          return;  // exact decode succeeded
+        }
+      }
+    }
+    // Fallback window sweep (the table wasn't provided / decodable).
     const uint64_t mlo = memory.begin()->first & ~uint64_t(3);
     const uint64_t mhi = memory.rbegin()->first;
     const uint64_t lo =
@@ -415,6 +542,24 @@ int main(int argc, char *argv[]) {
   const auto mem_ptr_type = arch->MemoryPointerType();
 
   Memory memory = UnhexlifyInputBytes(addr_mask);
+  // M12.7: merge extra regions (jump-table .rodata) into `memory`.
+  if (!FLAGS_extra_data.empty()) {
+    size_t pos = 0;
+    while (pos < FLAGS_extra_data.size()) {
+      size_t semi = FLAGS_extra_data.find(';', pos);
+      std::string region = FLAGS_extra_data.substr(
+          pos, semi == std::string::npos ? std::string::npos : semi - pos);
+      pos = (semi == std::string::npos) ? FLAGS_extra_data.size() : semi + 1;
+      size_t colon = region.find(':');
+      if (colon == std::string::npos) continue;
+      uint64_t base = std::strtoull(region.substr(0, colon).c_str(), nullptr, 16);
+      const std::string hx = region.substr(colon + 1);
+      for (size_t i = 0; i + 1 < hx.size(); i += 2) {
+        char nb[] = {hx[i], hx[i + 1], '\0'};
+        memory[base + i / 2] = static_cast<uint8_t>(std::strtoul(nb, nullptr, 16));
+      }
+    }
+  }
   SimpleTraceManager manager(arch.get(), module.get(), memory,
                              FLAGS_entry_address);
   if (!manager.TryReadExecutableByte(FLAGS_entry_address, nullptr)) {
