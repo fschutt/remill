@@ -942,6 +942,29 @@ bool TryDecodeSTLR_SL32_LDSTEXCL(const InstData &data, Instruction &inst) {
   return true;
 }
 
+// M12.7 (azul web): BYTE/HALFWORD + 64-bit plain store-release (STLRB/STLRH/
+// STLR_SL64) were Decode.cpp stubs → __remill_error. std's AtomicU8/bool
+// store-release (Once state byte) lowers to stlrb. Mirror STLR_SL32 with an
+// 8/16/64-bit memory operand; DEF_ISELs reuse StoreRelease (which already
+// WriteTrunc's). Definitions REPLACE the deleted Decode.cpp stubs.
+bool TryDecodeSTLRB_SL32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  AddRegOperand(inst, kActionRead, kRegW, kUseAsValue, data.Rt);
+  AddBasePlusOffsetMemOp(inst, kActionWrite, 8, data.Rn, 0);
+  return true;
+}
+
+bool TryDecodeSTLRH_SL32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  AddRegOperand(inst, kActionRead, kRegW, kUseAsValue, data.Rt);
+  AddBasePlusOffsetMemOp(inst, kActionWrite, 16, data.Rn, 0);
+  return true;
+}
+
+bool TryDecodeSTLR_SL64_LDSTEXCL(const InstData &data, Instruction &inst) {
+  AddRegOperand(inst, kActionRead, kRegX, kUseAsValue, data.Rt);
+  AddBasePlusOffsetMemOp(inst, kActionWrite, 64, data.Rn, 0);
+  return true;
+}
+
 // STP  <Wt1>, <Wt2>, [<Xn|SP>, #<imm>]!
 bool TryDecodeSTP_32_LDSTPAIR_PRE(const InstData &data, Instruction &inst) {
   AddRegOperand(inst, kActionRead, kRegW, kUseAsValue, data.Rt);
@@ -3129,6 +3152,17 @@ bool TryDecodeFMUL_D_FLOATDP2(const InstData &data, Instruction &inst) {
   return TryDecodeFdW_Fn_Fm(data, inst, kRegD);
 }
 
+// 2026-06-06: FNMUL (scalar, FLOATDP2) `fnmul s,s,s` / `d,d,d` = -(Sn*Sm) — was a
+// `return false` stub. perform_fragment_layout (text line layout) uses it for glyph-metric
+// math; the stub truncated that fn's lift → layout_flow Err → text never positioned.
+// Same 3-operand scalar FP DP2 format as FMUL; semantic negates the product.
+bool TryDecodeFNMUL_S_FLOATDP2(const InstData &data, Instruction &inst) {
+  return TryDecodeFdW_Fn_Fm(data, inst, kRegS);
+}
+bool TryDecodeFNMUL_D_FLOATDP2(const InstData &data, Instruction &inst) {
+  return TryDecodeFdW_Fn_Fm(data, inst, kRegD);
+}
+
 // FDIV  <Hd>, <Hn>, <Hm>
 bool TryDecodeFDIV_H_FLOATDP2(const InstData &data, Instruction &inst) {
   return TryDecodeFdW_Fn_Fm(data, inst, kRegH);
@@ -3444,6 +3478,27 @@ bool TryDecodeSTR_Q_LDST_REGOFF(const InstData &data, Instruction &inst) {
   return TryDecodeSTR_Vn_LDST_REGOFF(data, inst, kRegQ);
 }
 
+// STR  <Dt>, [<Xn|SP>, (<Wm>|<Xm>){, <extend> {<amount>}}]
+// M12.7 (web): D/S/B/H FP register-offset stores were Decode.cpp stubs (return
+// false). The vectorized to_ascii_lowercase stores its result via `str d0,[xN,xM]`
+// — defined here (not Decode.cpp) so the static TryDecodeSTR_Vn_LDST_REGOFF helper
+// is in scope; the Decode.cpp stubs are removed to avoid duplicate definitions.
+bool TryDecodeSTR_D_LDST_REGOFF(const InstData &data, Instruction &inst) {
+  return TryDecodeSTR_Vn_LDST_REGOFF(data, inst, kRegD);
+}
+
+bool TryDecodeSTR_S_LDST_REGOFF(const InstData &data, Instruction &inst) {
+  return TryDecodeSTR_Vn_LDST_REGOFF(data, inst, kRegS);
+}
+
+bool TryDecodeSTR_B_LDST_REGOFF(const InstData &data, Instruction &inst) {
+  return TryDecodeSTR_Vn_LDST_REGOFF(data, inst, kRegB);
+}
+
+bool TryDecodeSTR_H_LDST_REGOFF(const InstData &data, Instruction &inst) {
+  return TryDecodeSTR_Vn_LDST_REGOFF(data, inst, kRegH);
+}
+
 static bool TryDecodeSTR_Vn_LDST_IMMPRE(const InstData &data, Instruction &inst,
                                         RegClass val_class) {
   uint64_t scale = DecodeScale(data);
@@ -3468,7 +3523,14 @@ bool TryDecodeSTR_Q_LDST_IMMPRE(const InstData &data, Instruction &inst) {
 static bool TryDecodeSTR_Vn_LDST_IMMPOST(const InstData &data, Instruction &inst,
                                          RegClass val_class) {
   uint64_t scale = DecodeScale(data);
-  if (scale < 4) {
+  // 2026-06-02: was `scale < 4` (Q-ONLY, from the m12_7 STR_Q post-index fix),
+  // which rejected the 64-bit D (scale 3) / S (scale 2) FP post-index stores the
+  // Rust auto-vectorizer emits (`str d0,[x27],#0x10` in the layout solver's
+  // per-node loop) → __remill_error → skipped → corrupted layout. The val_class
+  // arg (not `scale`) determines the width via ReadRegSize, and post-index offset
+  // is an unscaled simm9, so accept all FP sizes (B/H/S/D/Q = scale 0..4) like the
+  // LDR_Vn helper does. The decode dispatch already routes by exact size+opc.
+  if (scale > 4) {
     return false;
   }
   auto num_bits = ReadRegSize(val_class);
@@ -3479,6 +3541,15 @@ static bool TryDecodeSTR_Vn_LDST_IMMPOST(const InstData &data, Instruction &inst
 }
 bool TryDecodeSTR_Q_LDST_IMMPOST(const InstData &data, Instruction &inst) {
   return TryDecodeSTR_Vn_LDST_IMMPOST(data, inst, kRegQ);
+}
+// 2026-06-02: D/S FP post-index stores (siblings of the m12_7 STR_Q fix). The
+// Rust auto-vectorizer emits `str d0,[x27],#0x10` (.2s/f64 spill) in the layout
+// solver's per-node loop; was a Decode.cpp `return false` stub → __remill_error.
+bool TryDecodeSTR_D_LDST_IMMPOST(const InstData &data, Instruction &inst) {
+  return TryDecodeSTR_Vn_LDST_IMMPOST(data, inst, kRegD);
+}
+bool TryDecodeSTR_S_LDST_IMMPOST(const InstData &data, Instruction &inst) {
+  return TryDecodeSTR_Vn_LDST_IMMPOST(data, inst, kRegS);
 }
 
 static bool TryDecodeLDR_Vn_LDST_POS(const InstData &data, Instruction &inst,
@@ -4025,9 +4096,24 @@ bool TryDecodeREV32_ASIMDMISC_R(const InstData &, Instruction &) {
   return false;
 }
 
+// Forward decl: AddArrangementSpecifier is defined ~30 lines below (just before
+// DUP_ASIMDINS_DR_R), but REV64 (here) needs it. Static fwd-decl is valid C++.
+static void AddArrangementSpecifier(Instruction &inst, uint64_t total_size,
+                                    uint64_t element_size);
+
 // REV64  <Vd>.<T>, <Vn>.<T>
-bool TryDecodeREV64_ASIMDMISC_R(const InstData &, Instruction &) {
-  return false;
+// 2026-06-02: was a `return false` stub → rev64.2s (Rust auto-vectorizer, in
+// layout_bfc + adjust_relative_positions) hit __remill_error → corrupted layout.
+// size (bits 23:22) = element size (8<<size); size==3 (64-bit elems) is unallocated.
+bool TryDecodeREV64_ASIMDMISC_R(const InstData &data, Instruction &inst) {
+  if (data.size > 2) {
+    return false;
+  }
+  const uint64_t datasize = data.Q ? 128 : 64;
+  AddArrangementSpecifier(inst, datasize, 8UL << data.size);
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  return true;
 }
 
 static void AddQArrangementSpecifier(const InstData &data, Instruction &inst,
@@ -4435,6 +4521,66 @@ bool TryDecodeFDIV_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
   return TryDecodeFP_ASIMDSAME_3(data, inst);
 }
 
+// 2026-06-06: FMUL (by element), vector, single/double-precision (FMUL_asimdelem_R_SD)
+// — was a `return false` stub in Decode.cpp. The allsorts glyph shaper
+// (azul_layout::text3::default::shape_text_internal) emits `fmul.2s/.4s Vd, Vn, Vm[idx]`
+// for glyph-metric math; the stub → __remill_error → text never shaped on the web lift.
+// Encoding (Decode.cpp comment): Rd[0:4] Rn[5:9] H[11] opcode[12:15]=1001 Rm[16:19]
+// M[20] L[21] sz[22] Q[30]. SD form:
+//   sz==0 → single (.2S/.4S): index = H:L (2 bits), Vm = M:Rm (v0-v31)
+//   sz==1 → double (.2D):     index = H,           Vm = M:Rm; L must be 0, Q must be 1
+// Vm uses the M bit as its 5th register bit (the index never consumes M in the SD form).
+bool TryDecodeFMUL_ASIMDELEM_R_SD(const InstData &data, Instruction &inst) {
+  // RegNum is a scoped `enum class : uint8_t` (REMILL_AARCH_STRICT_REGNUM) — cast through uint8_t.
+  const aarch64::RegNum vm = static_cast<aarch64::RegNum>(
+      (static_cast<uint8_t>(data.M) << 4) | static_cast<uint8_t>(data.Rm));
+  uint64_t index = 0;
+  if (data.sz) {
+    if (!data.Q || data.L) {
+      return false;  // .2D requires Q==1 and L==0
+    }
+    index = data.H;
+    AddArrangementSpecifier(inst, 128, 64);  // -> "_2D"
+  } else {
+    index = (static_cast<uint64_t>(data.H) << 1) | static_cast<uint64_t>(data.L);
+    AddArrangementSpecifier(inst, data.Q ? 128 : 64, 32);  // -> "_2S" / "_4S"
+  }
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, vm);
+  AddImmOperand(inst, index);
+  return true;
+}
+
+// 2026-06-06: FMUL (by element), SCALAR single/double (FMUL_asisdelem_R_SD) — was a
+// `return false` stub in Decode.cpp (moved here). `fmul s,s,v[idx]` scales a glyph metric by
+// an indexed lane in perform_fragment_layout (text3 line layout). The stub made remill BAIL
+// with __remill_error there → CFG recovery truncated → perform_fragment_layout returned
+// garbage → layout_flow's `?` propagated a bogus Err → text MEASURED but never POSITIONED.
+// Scalar counterpart of TryDecodeFMUL_ASIMDELEM_R_SD: same fields (sz/L/M/H/Rm); dst/src1 are
+// scalars (no Q), ISEL takes a manual _S/_D suffix (like scalar SCVTF_ASISDMISC).
+// sz==0 → single (.s, index=H:L); sz==1 → double (.d, index=H, L must be 0).
+bool TryDecodeFMUL_ASISDELEM_R_SD(const InstData &data, Instruction &inst) {
+  const aarch64::RegNum vm = static_cast<aarch64::RegNum>(
+      (static_cast<uint8_t>(data.M) << 4) | static_cast<uint8_t>(data.Rm));
+  uint64_t index = 0;
+  if (data.sz) {
+    if (data.L) {
+      return false;  // .D form requires L==0
+    }
+    index = data.H;
+    inst.function += "_D";
+  } else {
+    index = (static_cast<uint64_t>(data.H) << 1) | static_cast<uint64_t>(data.L);
+    inst.function += "_S";
+  }
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, vm);
+  AddImmOperand(inst, index);
+  return true;
+}
+
 // M12.7: vector int->float convert (SCVTF/UCVTF ASIMDMISC).
 static bool TryDecodeCVTF_ASIMDMISC(const InstData &data, Instruction &inst) {
   const uint64_t sz = data.size & 1ULL;
@@ -4453,9 +4599,45 @@ bool TryDecodeUCVTF_ASIMDMISC_R(const InstData &data, Instruction &inst) {
   return TryDecodeCVTF_ASIMDMISC(data, inst);
 }
 
+// 2026-06-06: FNEG (vector), single/double-precision (FNEG_asimdmisc_R) — was a
+// `return false` stub in Decode.cpp (moved here, mirroring the FMUL/CVTF recipe). The
+// azul layout solver (collect_and_measure_inline_content / positioning) emits `fneg.2s`
+// to build an FP sentinel constant (mvni.2s + fneg.2s). The stub made remill BAIL with
+// __remill_error AT the fneg, which TRUNCATED CFG recovery — every block after it (incl.
+// the entire DOM-children loop body that collects + measures text) was silently never
+// lifted, so the lifted loop "ran 0 times" and text never positioned on the web lift.
+// Encoding (same ASIMDMISC 2-reg form as SCVTF): Rd[0:4] Rn[5:9] opcode[12:16]=01111
+// sz[22] U[29]=1 Q[30]. sz==1 (.2D) requires Q==1. Appends _2S/_4S/_2D arrangement suffix.
+bool TryDecodeFNEG_ASIMDMISC_R(const InstData &data, Instruction &inst) {
+  const uint64_t sz = data.size & 1ULL;  // bit 22: 0=f32 (.2S/.4S), 1=f64 (.2D)
+  if (sz && !data.Q) {
+    return false;  // 64-bit elements require Q==1 (.2D)
+  }
+  AddArrangementSpecifier(inst, data.Q ? 128 : 64, 32ULL << sz);  // -> _2S / _4S / _2D
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  return true;
+}
+
 // M12.7: scalar single-element SCVTF (ASISDMISC, `scvtf s,s` / `scvtf d,d`). sz bit
 // selects S (0) / D (1); append the suffix so the ISEL picks the right width.
 bool TryDecodeSCVTF_ASISDMISC_R(const InstData &data, Instruction &inst) {
+  if (data.sz) {
+    inst.function += "_D";
+    AddRegOperand(inst, kActionWrite, kRegD, kUseAsValue, data.Rd);
+    AddRegOperand(inst, kActionRead, kRegD, kUseAsValue, data.Rn);
+  } else {
+    inst.function += "_S";
+    AddRegOperand(inst, kActionWrite, kRegS, kUseAsValue, data.Rd);
+    AddRegOperand(inst, kActionRead, kRegS, kUseAsValue, data.Rn);
+  }
+  return true;
+}
+// 2026-06-06: UCVTF (scalar single-element, ASISDMISC, `ucvtf s,s` / `ucvtf d,d`) — was a
+// `return false` stub. Unsigned counterpart of SCVTF_ASISDMISC_R; the text line-breaker
+// (perform_fragment_layout) converts an unsigned glyph count to float. The stub truncated
+// that fn's lift → layout_flow Err → text not positioned. sz selects S(0)/D(1).
+bool TryDecodeUCVTF_ASISDMISC_R(const InstData &data, Instruction &inst) {
   if (data.sz) {
     inst.function += "_D";
     AddRegOperand(inst, kActionWrite, kRegD, kUseAsValue, data.Rd);
@@ -5208,6 +5390,78 @@ bool TryDecodeLDXR_LR64_LDSTEXCL(const InstData &data, Instruction &inst) {
   AddRegOperand(inst, kActionWrite, kRegX, kUseAsValue, data.Rt);
   AddBasePlusOffsetMemOp(inst, kActionRead, 64, data.Rn, 0);
   AddMonitorOperand(inst);
+  return true;
+}
+
+// M12.7 (azul web lift): BYTE/HALFWORD load/store-exclusive. remill only
+// had the 32/64-bit LDXR/STXR/LDAXR/STLXR; the byte/half forms were decoder
+// stubs (`return false` in Decode.cpp) → __remill_error. The
+// `-Z build-std -C target-feature=-lse` build lowers precompiled std's
+// AtomicU8/AtomicBool (std::sync::Once poison flag, RwLock state byte, …)
+// to ldxrb/stxrb/ldaxrb/stlxrb loops, so these are REQUIRED for any
+// std-atomic-heavy lifted path. Mirror the 32-bit decoders with an 8/16-bit
+// memory operand; the matching DEF_ISELs (DATAXFER.cpp) pick M8/M16. These
+// definitions REPLACE the Decode.cpp stubs (deleted there to avoid an ODR
+// clash) — the helpers AddRegOperand/AddBasePlusOffsetMemOp/AddMonitorOperand
+// are file-local statics here in Arch.cpp.
+bool TryDecodeLDXRB_LR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  inst.is_atomic_read_modify_write = true;
+  AddRegOperand(inst, kActionWrite, kRegW, kUseAsValue, data.Rt);
+  AddBasePlusOffsetMemOp(inst, kActionRead, 8, data.Rn, 0);
+  AddMonitorOperand(inst);
+  return true;
+}
+
+bool TryDecodeLDXRH_LR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  inst.is_atomic_read_modify_write = true;
+  AddRegOperand(inst, kActionWrite, kRegW, kUseAsValue, data.Rt);
+  AddBasePlusOffsetMemOp(inst, kActionRead, 16, data.Rn, 0);
+  AddMonitorOperand(inst);
+  return true;
+}
+
+// LDAXRB/LDAXRH share operands with LDXRB/LDXRH (the acquire barrier is in
+// the LDAXR semantic, not the decoder).
+bool TryDecodeLDAXRB_LR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  return TryDecodeLDXRB_LR32_LDSTEXCL(data, inst);
+}
+
+bool TryDecodeLDAXRH_LR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  return TryDecodeLDXRH_LR32_LDSTEXCL(data, inst);
+}
+
+bool TryDecodeSTXRB_SR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  inst.is_atomic_read_modify_write = true;
+  AddRegOperand(inst, kActionWrite, kRegW, kUseAsValue, data.Rs);
+  AddRegOperand(inst, kActionRead, kRegW, kUseAsValue, data.Rt);
+  AddBasePlusOffsetMemOp(inst, kActionWrite, 8, data.Rn, 0);
+  AddMonitorOperand(inst);
+  return true;
+}
+
+bool TryDecodeSTXRH_SR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  inst.is_atomic_read_modify_write = true;
+  AddRegOperand(inst, kActionWrite, kRegW, kUseAsValue, data.Rs);
+  AddRegOperand(inst, kActionRead, kRegW, kUseAsValue, data.Rt);
+  AddBasePlusOffsetMemOp(inst, kActionWrite, 16, data.Rn, 0);
+  AddMonitorOperand(inst);
+  return true;
+}
+
+// STLXRB/STLXRH share operands with STXRB/STXRH (the release barrier is in
+// the STLXR semantic, which plain STXR* reuses too).
+bool TryDecodeSTLXRB_SR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  return TryDecodeSTXRB_SR32_LDSTEXCL(data, inst);
+}
+
+bool TryDecodeSTLXRH_SR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  return TryDecodeSTXRH_SR32_LDSTEXCL(data, inst);
+}
+
+// CLREX clears the local exclusive monitor — a no-op in the single-threaded
+// wasm lift (mirrors DMB above). Was a Decode.cpp stub → __remill_error in
+// the std ldxrb/stxrb retry loops. Semantic = DoNOP (MISC.cpp).
+bool TryDecodeCLREX_BN_SYSTEM(const InstData &, Instruction &) {
   return true;
 }
 

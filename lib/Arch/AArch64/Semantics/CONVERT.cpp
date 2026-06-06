@@ -314,6 +314,21 @@ DEF_SEM(SCVTF_Scalar64, V128W dst, V64 src) {
   return memory;
 }
 
+// 2026-06-06: UCVTF (scalar, ASISDMISC) — unsigned-int→float of a scalar in a V register.
+// Unsigned counterpart of SCVTF_Scalar32/64; the layout line-breaker emits `ucvtf s,s` to
+// convert an unsigned glyph count to float. The missing decoder (UCVTF_ASISDMISC_R was a
+// `return false` stub) truncated perform_fragment_layout's lift → layout_flow Err.
+DEF_SEM(UCVTF_Scalar32, V128W dst, V32 src) {
+  auto res = CheckedCast<uint32_t, float32_t>(state, UExtractV32(UReadV32(src), 0));
+  FWriteV32(dst, res);
+  return memory;
+}
+DEF_SEM(UCVTF_Scalar64, V128W dst, V64 src) {
+  auto res = CheckedCast<uint64_t, float64_t>(state, UExtractV64(UReadV64(src), 0));
+  FWriteV64(dst, res);
+  return memory;
+}
+
 }  // namespace
 
 // TODO(pag): SCVTF_H32_FLOAT2INT.
@@ -325,3 +340,6 @@ DEF_ISEL(SCVTF_S64_FLOAT2INT) = SCVTF_Int64ToFloat32;
 DEF_ISEL(SCVTF_D64_FLOAT2INT) = SCVTF_Int64ToFloat64;
 DEF_ISEL(SCVTF_ASISDMISC_R_S) = SCVTF_Scalar32;
 DEF_ISEL(SCVTF_ASISDMISC_R_D) = SCVTF_Scalar64;
+// 2026-06-06: UCVTF (scalar, ASISDMISC) ISELs — base TryDecodeUCVTF_ASISDMISC_R + _S/_D.
+DEF_ISEL(UCVTF_ASISDMISC_R_S) = UCVTF_Scalar32;
+DEF_ISEL(UCVTF_ASISDMISC_R_D) = UCVTF_Scalar64;

@@ -288,6 +288,23 @@ DEF_SEM(FMUL_Scalar64, V128W dst, V64 src1, V64 src2) {
   return memory;
 }
 
+// 2026-06-06: FNMUL (scalar) = -(src1 * src2). Mirrors FMUL_Scalar* + the scalar FNEG_S
+// negate. Decoder TryDecodeFNMUL_*_FLOATDP2 (Arch.cpp). Used by perform_fragment_layout.
+DEF_SEM(FNMUL_Scalar32, V128W dst, V32 src1, V32 src2) {
+  auto val1 = FExtractV32(FReadV32(src1), 0);
+  auto val2 = FExtractV32(FReadV32(src2), 0);
+  auto prod = CheckedFloatBinOp(state, FMul32, val1, val2);
+  FWriteV32(dst, -prod);
+  return memory;
+}
+DEF_SEM(FNMUL_Scalar64, V128W dst, V64 src1, V64 src2) {
+  auto val1 = FExtractV64(FReadV64(src1), 0);
+  auto val2 = FExtractV64(FReadV64(src2), 0);
+  auto prod = CheckedFloatBinOp(state, FMul64, val1, val2);
+  FWriteV64(dst, -prod);
+  return memory;
+}
+
 DEF_SEM(FDIV_Scalar32, V128W dst, V32 src1, V32 src2) {
   auto val1 = FExtractV32(FReadV32(src1), 0);
   auto val2 = FExtractV32(FReadV32(src2), 0);
@@ -499,6 +516,10 @@ DEF_ISEL(FMAXNM_D_FLOATDP2) = FMAXNM_Scalar64;
 
 DEF_ISEL(FMUL_S_FLOATDP2) = FMUL_Scalar32;
 DEF_ISEL(FMUL_D_FLOATDP2) = FMUL_Scalar64;
+
+// 2026-06-06: FNMUL (scalar) ISELs.
+DEF_ISEL(FNMUL_S_FLOATDP2) = FNMUL_Scalar32;
+DEF_ISEL(FNMUL_D_FLOATDP2) = FNMUL_Scalar64;
 
 DEF_ISEL(FMADD_S_FLOATDP3) = FMADD_S;
 DEF_ISEL(FMADD_D_FLOATDP3) = FMADD_D;

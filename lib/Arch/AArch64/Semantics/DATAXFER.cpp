@@ -186,6 +186,9 @@ DEF_ISEL(STR_32_LDST_POS) = Store<R32, M32W>;
 DEF_ISEL(STR_64_LDST_POS) = Store<R64, M64W>;
 
 DEF_ISEL(STLR_SL32_LDSTEXCL) = StoreRelease<R32, M32W>;
+// M12.7 (azul web): byte/half plain store-release (std AtomicU8/bool store).
+DEF_ISEL(STLRB_SL32_LDSTEXCL) = StoreRelease<R32, M8W>;
+DEF_ISEL(STLRH_SL32_LDSTEXCL) = StoreRelease<R32, M16W>;
 
 DEF_ISEL(STRB_32_LDST_POS) = Store<R32, M8W>;
 DEF_ISEL(STRB_32_LDST_IMMPOST) = StoreUpdateIndex<R32, M8W>;
@@ -354,7 +357,10 @@ template <typename S, typename D>
 DEF_SEM(STLXR, R32W dst1, S src1, D dst2, R64W monitor) {
   auto old_addr = Read(monitor);
   if (old_addr == AddressOf(dst2)) {
-    WriteZExt(dst2, Read(src1));
+    // WriteTrunc (not WriteZExt) so the byte/half store-exclusive variants
+    // (STXRB/STLXRB<R32,M8W>, …) truncate the 32-bit source register to the
+    // 8/16-bit memory slot. Identity for the existing word/dword uses.
+    WriteTrunc(dst2, Read(src1));
     WriteZExt(dst1, 0_u32);  // Store succeeded.
   } else {
     WriteZExt(dst1, 1_u32);  // Store failed.
@@ -373,6 +379,26 @@ DEF_ISEL(LDAXR_LR32_LDSTEXCL) = LDAXR<R32W, M32>;
 DEF_ISEL(LDAXR_LR64_LDSTEXCL) = LDAXR<R64W, M64>;
 DEF_ISEL(STLXR_SR32_LDSTEXCL) = STLXR<R32, M32W>;
 DEF_ISEL(STLXR_SR64_LDSTEXCL) = STLXR<R64, M64W>;
+// M12.7 (web/-lse): plain store-exclusive reuses the STLXR semantic (the
+// store-release barrier is a no-op in the single-threaded wasm lift). The
+// `-C target-feature=-lse` build emits ldxr/stxr (not LSE) for relaxed atomics
+// — `from_font_manager`'s FontId/Arc refcount loop hit a hot gap on plain STXR.
+DEF_ISEL(STXR_SR32_LDSTEXCL) = STLXR<R32, M32W>;
+DEF_ISEL(STXR_SR64_LDSTEXCL) = STLXR<R64, M64W>;
+// M12.7 (azul web): BYTE/HALFWORD exclusive variants. The
+// `-Z build-std -C target-feature=-lse` build lowers precompiled std's
+// AtomicU8/AtomicBool (std::sync::Once poison flag, RwLock state byte, …) to
+// ldxrb/stxrb/ldaxrb/stlxrb retry loops. Reuse the 32-bit LDXR/LDAXR/STLXR
+// templates with an 8/16-bit memory type (plain STXR* reuses STLXR — the
+// release barrier is a no-op single-threaded). Decoders live in Arch.cpp.
+DEF_ISEL(LDXRB_LR32_LDSTEXCL) = LDXR<R32W, M8>;
+DEF_ISEL(LDXRH_LR32_LDSTEXCL) = LDXR<R32W, M16>;
+DEF_ISEL(LDAXRB_LR32_LDSTEXCL) = LDAXR<R32W, M8>;
+DEF_ISEL(LDAXRH_LR32_LDSTEXCL) = LDAXR<R32W, M16>;
+DEF_ISEL(STXRB_SR32_LDSTEXCL) = STLXR<R32, M8W>;
+DEF_ISEL(STXRH_SR32_LDSTEXCL) = STLXR<R32, M16W>;
+DEF_ISEL(STLXRB_SR32_LDSTEXCL) = STLXR<R32, M8W>;
+DEF_ISEL(STLXRH_SR32_LDSTEXCL) = STLXR<R32, M16W>;
 
 namespace {
 
@@ -982,8 +1008,41 @@ DEF_SEM(STR_Q_UpdateIndex, V128 src, MV128W dst, R64W dst_reg, ADDR next_addr) {
   return memory;
 }
 
+// 2026-06-02: 64/32-bit FP post-index stores (siblings of STR_Q_UpdateIndex).
+// store the D/S register to memory, then write the post-incremented base reg.
+DEF_SEM(STR_D_UpdateIndex, V64 src, MV64W dst, R64W dst_reg, ADDR next_addr) {
+  FWriteV64(dst, FReadV64(src));
+  Write(dst_reg, Read(next_addr));
+  return memory;
+}
+
+DEF_SEM(STR_S_UpdateIndex, V32 src, MV32W dst, R64W dst_reg, ADDR next_addr) {
+  FWriteV32(dst, FReadV32(src));
+  Write(dst_reg, Read(next_addr));
+  return memory;
+}
+
 DEF_SEM(STR_Q_FromOffset, V128 src, MV128W dst, ADDR offset) {
   UWriteV128(DisplaceAddress(dst, Read(offset)), UReadV128(src));
+  return memory;
+}
+
+// M12.7 (web): D/S/H/B FP register-offset stores (mirror STR_Q_FromOffset). The
+// vectorized to_ascii_lowercase stores its result via `str d0,[xN,xM]`.
+DEF_SEM(STR_D_FromOffset, V64 src, MV64W dst, ADDR offset) {
+  UWriteV64(DisplaceAddress(dst, Read(offset)), UReadV64(src));
+  return memory;
+}
+DEF_SEM(STR_S_FromOffset, V32 src, MV32W dst, ADDR offset) {
+  UWriteV32(DisplaceAddress(dst, Read(offset)), UReadV32(src));
+  return memory;
+}
+DEF_SEM(STR_H_FromOffset, V16 src, MV16W dst, ADDR offset) {
+  UWriteV16(DisplaceAddress(dst, Read(offset)), UReadV16(src));
+  return memory;
+}
+DEF_SEM(STR_B_FromOffset, V8 src, MV8W dst, ADDR offset) {
+  UWriteV8(DisplaceAddress(dst, Read(offset)), UReadV8(src));
   return memory;
 }
 }  // namespace
@@ -1001,9 +1060,19 @@ DEF_ISEL(STUR_D_LDST_UNSCALED) = STR_D;
 DEF_ISEL(STUR_Q_LDST_UNSCALED) = STR_Q;
 
 DEF_ISEL(STR_Q_LDST_REGOFF) = STR_Q_FromOffset;
+DEF_ISEL(STR_D_LDST_REGOFF) = STR_D_FromOffset;
+DEF_ISEL(STR_S_LDST_REGOFF) = STR_S_FromOffset;
+DEF_ISEL(STR_H_LDST_REGOFF) = STR_H_FromOffset;
+DEF_ISEL(STR_B_LDST_REGOFF) = STR_B_FromOffset;
 
 DEF_ISEL(STR_Q_LDST_IMMPRE) = STR_Q_UpdateIndex;
 DEF_ISEL(STR_Q_LDST_IMMPOST) = STR_Q_UpdateIndex;  // M12.7: post-index 128-bit store
+// 2026-06-02: 64/32-bit FP post-index (and pre-index) stores — the auto-vectorizer
+// `str d,[x],#imm` in the layout solver. Same UpdateIndex semantic, size by reg class.
+DEF_ISEL(STR_D_LDST_IMMPOST) = STR_D_UpdateIndex;
+DEF_ISEL(STR_D_LDST_IMMPRE) = STR_D_UpdateIndex;
+DEF_ISEL(STR_S_LDST_IMMPOST) = STR_S_UpdateIndex;
+DEF_ISEL(STR_S_LDST_IMMPRE) = STR_S_UpdateIndex;
 
 namespace {
 

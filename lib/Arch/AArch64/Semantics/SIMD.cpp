@@ -37,6 +37,17 @@ DEF_SEM(BIC_Vec, V128W dst, S src1, S src2) {
   return memory;
 }
 
+// ORN  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>  =  Vn | ~Vm  (mirror of BIC = Vn & ~Vm).
+// Was a missing semantic: TryDecodeORN_ASIMDSAME_ONLY stubbed `return false`
+// + no DEF_ISEL → orn.8b/16b (Rust auto-vectorizer bit-select idiom
+// `csetm;dup;and;orn`) hit __remill_error → instr skipped → corrupted the
+// lifted azul-layout solver (the multi-node web layout sizing bug).
+template <typename S>
+DEF_SEM(ORN_Vec, V128W dst, S src1, S src2) {
+  UWriteV64(dst, UOrV64(UReadV64(src1), UNotV64(UReadV64(src2))));
+  return memory;
+}
+
 template <typename S>
 DEF_SEM(EOR_Vec, V128W dst, S src1, S src2) {
   auto operand4 = UReadV64(src1);
@@ -88,6 +99,9 @@ DEF_ISEL(AND_ASIMDSAME_ONLY_16B) = AND_Vec<V128>;
 
 DEF_ISEL(BIC_ASIMDSAME_ONLY_8B) = BIC_Vec<V64>;
 DEF_ISEL(BIC_ASIMDSAME_ONLY_16B) = BIC_Vec<V128>;
+
+DEF_ISEL(ORN_ASIMDSAME_ONLY_8B) = ORN_Vec<V64>;
+DEF_ISEL(ORN_ASIMDSAME_ONLY_16B) = ORN_Vec<V128>;
 
 DEF_ISEL(EOR_ASIMDSAME_ONLY_8B) = EOR_Vec<V64>;
 DEF_ISEL(EOR_ASIMDSAME_ONLY_16B) = EOR_Vec<V128>;
@@ -389,6 +403,67 @@ MAKE_FP_VEC(FDIV_VEC_2S, FDiv32, FReadV32, FExtractV32, FWriteV32, float32v2_t, 
 MAKE_FP_VEC(FDIV_VEC_4S, FDiv32, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
 MAKE_FP_VEC(FDIV_VEC_2D, FDiv64, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
 #undef MAKE_FP_VEC
+
+// 2026-06-06: FMUL (by element) — multiply each lane of Vn by the single indexed
+// element Vm[index]. Mirrors MAKE_FP_VEC + the MAKE_DUP_ELT index read. Used by the
+// allsorts glyph shaper (fmul.2s/.4s Vd,Vn,Vm[idx]); decoder = TryDecodeFMUL_ASIMDELEM_R_SD
+// (Arch.cpp), which appends the _2S/_4S/_2D arrangement suffix to the ISEL name.
+#define MAKE_FP_VEC_ELT(NAME, FOP, RDV, EXV, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src1, V128 src2, I64 index) { \
+    auto v1 = RDV(src1); \
+    auto v2 = RDV(src2); \
+    auto elem = EXV(v2, Read(index)); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = CheckedFloatBinOp(state, FOP, EXV(v1, i), elem); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_FP_VEC_ELT(FMUL_ELT_2S, FMul32, FReadV32, FExtractV32, FWriteV32, float32v2_t, 2)
+MAKE_FP_VEC_ELT(FMUL_ELT_4S, FMul32, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
+MAKE_FP_VEC_ELT(FMUL_ELT_2D, FMul64, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
+#undef MAKE_FP_VEC_ELT
+
+// 2026-06-06: FNEG (vector) — negate each FP lane. Unary counterpart of MAKE_FP_VEC;
+// mirrors the scalar FNEG_S/D (BINARY.cpp `auto result = -val;`). Decoder
+// TryDecodeFNEG_ASIMDMISC_R (Arch.cpp) appends the _2S/_4S/_2D arrangement suffix. The
+// layout solver builds an FP sentinel via `mvni.2s + fneg.2s`; the missing decoder made
+// remill bail mid-function and drop the DOM-children loop body (text never positioned).
+#define MAKE_FP_VEC_NEG(NAME, RDV, EXV, WRV, DV, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src) { \
+    auto v = RDV(src); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = -EXV(v, i); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_FP_VEC_NEG(FNEG_VEC_2S, FReadV32, FExtractV32, FWriteV32, float32v2_t, 2)
+MAKE_FP_VEC_NEG(FNEG_VEC_4S, FReadV32, FExtractV32, FWriteV32, float32v4_t, 4)
+MAKE_FP_VEC_NEG(FNEG_VEC_2D, FReadV64, FExtractV64, FWriteV64, float64v2_t, 2)
+#undef MAKE_FP_VEC_NEG
+
+// 2026-06-06: FMUL (by element), SCALAR — multiply scalar src1 by the indexed lane Vm[index],
+// write the scalar result (upper lanes zeroed). Scalar counterpart of MAKE_FP_VEC_ELT; mirrors
+// scalar FMUL_Scalar32 (BINARY.cpp) + the indexed element read. Decoder
+// TryDecodeFMUL_ASISDELEM_R_SD (Arch.cpp) appends _S/_D. Used by perform_fragment_layout
+// (glyph-metric scaling, `fmul s,s,v[idx]`); the missing decoder truncated that fn's lift.
+DEF_SEM(FMUL_ELTSCALAR_S, V128W dst, V128 src1, V128 src2, I64 index) {
+  auto a = FExtractV32(FReadV32(src1), 0);
+  auto b = FExtractV32(FReadV32(src2), Read(index));
+  auto prod = CheckedFloatBinOp(state, FMul32, a, b);
+  FWriteV32(dst, prod);
+  return memory;
+}
+DEF_SEM(FMUL_ELTSCALAR_D, V128W dst, V128 src1, V128 src2, I64 index) {
+  auto a = FExtractV64(FReadV64(src1), 0);
+  auto b = FExtractV64(FReadV64(src2), Read(index));
+  auto prod = CheckedFloatBinOp(state, FMul64, a, b);
+  FWriteV64(dst, prod);
+  return memory;
+}
 
 // M12.7: vector int->float convert (SCVTF/UCVTF ASIMDMISC) — per-lane CheckedCast,
 // modeled on the scalar UCVTF_UInt32ToFloat32 (CONVERT.cpp).
@@ -696,6 +771,31 @@ MAKE_USHL(USHL_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  uint32_t, 4)
 MAKE_USHL(USHL_2D,  UReadV64, UExtractV64, UWriteV64, uint64v2_t,  uint64_t, 2)
 #undef MAKE_USHL
 
+// 2026-06-02: REV64 (vector) — reverse the order of <esize> elements within each
+// 64-bit container. Rust's auto-vectorizer emits `rev64.2s` in the layout solver
+// (layout_bfc + adjust_relative_positions); was a decoder+semantic gap →
+// __remill_error → skipped → corrupted multi-node layout. NL = total lanes,
+// PC = lanes per 64-bit container (= 64/esize). res[base + (PC-1-off)] = v[i].
+#define MAKE_REV64(NAME, RDV, EXV, WRV, DV, NL, PC) \
+  DEF_SEM(NAME, V128W dst, V128 src) { \
+    auto v = RDV(src); \
+    DV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      size_t base = (i / (PC)) * (PC); \
+      size_t off = i % (PC); \
+      res.elems[base + ((PC) - 1 - off)] = EXV(v, i); \
+    } \
+    WRV(dst, res); \
+    return memory; \
+  }
+MAKE_REV64(REV64_8B,  UReadV8,  UExtractV8,  UWriteV8,  uint8v8_t,   8,  8)
+MAKE_REV64(REV64_16B, UReadV8,  UExtractV8,  UWriteV8,  uint8v16_t, 16,  8)
+MAKE_REV64(REV64_4H,  UReadV16, UExtractV16, UWriteV16, uint16v4_t,  4,  4)
+MAKE_REV64(REV64_8H,  UReadV16, UExtractV16, UWriteV16, uint16v8_t,  8,  4)
+MAKE_REV64(REV64_2S,  UReadV32, UExtractV32, UWriteV32, uint32v2_t,  2,  2)
+MAKE_REV64(REV64_4S,  UReadV32, UExtractV32, UWriteV32, uint32v4_t,  4,  2)
+#undef MAKE_REV64
+
 }  // namespace
 
 DEF_ISEL(CMEQ_ASIMDMISC_Z_8B) = CMPEQ_IMM_8<V64, uint8v8_t>;
@@ -743,9 +843,30 @@ DEF_ISEL(FSUB_ASIMDSAME_ONLY_2D) = FSUB_VEC_2D;
 DEF_ISEL(FMUL_ASIMDSAME_ONLY_2S) = FMUL_VEC_2S;
 DEF_ISEL(FMUL_ASIMDSAME_ONLY_4S) = FMUL_VEC_4S;
 DEF_ISEL(FMUL_ASIMDSAME_ONLY_2D) = FMUL_VEC_2D;
+// 2026-06-06: FMUL (by element) — names from TryDecodeFMUL_ASIMDELEM_R_SD + arrangement suffix.
+DEF_ISEL(FMUL_ASIMDELEM_R_SD_2S) = FMUL_ELT_2S;
+DEF_ISEL(FMUL_ASIMDELEM_R_SD_4S) = FMUL_ELT_4S;
+DEF_ISEL(FMUL_ASIMDELEM_R_SD_2D) = FMUL_ELT_2D;
+
+// 2026-06-06: FNEG (vector) ISELs — names = TryDecodeFNEG_ASIMDMISC_R base + arrangement.
+DEF_ISEL(FNEG_ASIMDMISC_R_2S) = FNEG_VEC_2S;
+DEF_ISEL(FNEG_ASIMDMISC_R_4S) = FNEG_VEC_4S;
+DEF_ISEL(FNEG_ASIMDMISC_R_2D) = FNEG_VEC_2D;
+
+// 2026-06-06: FMUL (by element) SCALAR ISELs — base TryDecodeFMUL_ASISDELEM_R_SD + _S/_D.
+DEF_ISEL(FMUL_ASISDELEM_R_SD_S) = FMUL_ELTSCALAR_S;
+DEF_ISEL(FMUL_ASISDELEM_R_SD_D) = FMUL_ELTSCALAR_D;
 DEF_ISEL(FDIV_ASIMDSAME_ONLY_2S) = FDIV_VEC_2S;
 DEF_ISEL(FDIV_ASIMDSAME_ONLY_4S) = FDIV_VEC_4S;
 DEF_ISEL(FDIV_ASIMDSAME_ONLY_2D) = FDIV_VEC_2D;
+
+// 2026-06-02: REV64 (vector) element reversal, all arrangements.
+DEF_ISEL(REV64_ASIMDMISC_R_8B) = REV64_8B;
+DEF_ISEL(REV64_ASIMDMISC_R_16B) = REV64_16B;
+DEF_ISEL(REV64_ASIMDMISC_R_4H) = REV64_4H;
+DEF_ISEL(REV64_ASIMDMISC_R_8H) = REV64_8H;
+DEF_ISEL(REV64_ASIMDMISC_R_2S) = REV64_2S;
+DEF_ISEL(REV64_ASIMDMISC_R_4S) = REV64_4S;
 
 // M12.7: vector int->float convert (SCVTF/UCVTF ASIMDMISC).
 DEF_ISEL(SCVTF_ASIMDMISC_R_2S) = SCVTF_VEC_2S;
@@ -953,6 +1074,20 @@ MAKE_CMP_BROADCAST(CMPGE, S, CmpGte, 16)
 MAKE_CMP_BROADCAST(CMPGE, S, CmpGte, 32)
 MAKE_CMP_BROADCAST(CMPGE, S, CmpGte, 64)
 
+// M12.7 (web): CMHI/CMHS = UNSIGNED compare higher / higher-or-same (vs CMGT/CMGE
+// which are signed). Same shape as CMPGT/CMPGE but with the `U` prefix so the
+// element compare uses UCmpGt/UCmpGte. The vectorized to_ascii_lowercase in
+// font-name matching emits cmhi.8b — unsupported → broke text resolution.
+MAKE_CMP_BROADCAST(CMPHI, U, CmpGt, 8)
+MAKE_CMP_BROADCAST(CMPHI, U, CmpGt, 16)
+MAKE_CMP_BROADCAST(CMPHI, U, CmpGt, 32)
+MAKE_CMP_BROADCAST(CMPHI, U, CmpGt, 64)
+
+MAKE_CMP_BROADCAST(CMPHS, U, CmpGte, 8)
+MAKE_CMP_BROADCAST(CMPHS, U, CmpGte, 16)
+MAKE_CMP_BROADCAST(CMPHS, U, CmpGte, 32)
+MAKE_CMP_BROADCAST(CMPHS, U, CmpGte, 64)
+
 #undef MAKE_CMP_BROADCAST
 
 }  // namespace
@@ -991,6 +1126,22 @@ DEF_ISEL(CMEQ_ASIMDSAME_ONLY_2D) = CMPEQ_64<V128, uint64v2_t>;
 DEF_ISEL(CMGT_ASIMDSAME_ONLY_2D) = CMPGT_64<V128, uint64v2_t>;
 DEF_ISEL(CMGE_ASIMDSAME_ONLY_2D) = CMPGE_64<V128, uint64v2_t>;
 DEF_ISEL(CMTST_ASIMDSAME_ONLY_2D) = CMPTST_64<V128, uint64v2_t>;
+
+// M12.7 (web): CMHI/CMHS unsigned vector compares (see CMPHI/CMPHS above).
+DEF_ISEL(CMHI_ASIMDSAME_ONLY_8B) = CMPHI_8<V64, uint8v8_t>;
+DEF_ISEL(CMHS_ASIMDSAME_ONLY_8B) = CMPHS_8<V64, uint8v8_t>;
+DEF_ISEL(CMHI_ASIMDSAME_ONLY_16B) = CMPHI_8<V128, uint8v16_t>;
+DEF_ISEL(CMHS_ASIMDSAME_ONLY_16B) = CMPHS_8<V128, uint8v16_t>;
+DEF_ISEL(CMHI_ASIMDSAME_ONLY_4H) = CMPHI_16<V64, uint16v4_t>;
+DEF_ISEL(CMHS_ASIMDSAME_ONLY_4H) = CMPHS_16<V64, uint16v4_t>;
+DEF_ISEL(CMHI_ASIMDSAME_ONLY_8H) = CMPHI_16<V128, uint16v8_t>;
+DEF_ISEL(CMHS_ASIMDSAME_ONLY_8H) = CMPHS_16<V128, uint16v8_t>;
+DEF_ISEL(CMHI_ASIMDSAME_ONLY_2S) = CMPHI_32<V64, uint32v2_t>;
+DEF_ISEL(CMHS_ASIMDSAME_ONLY_2S) = CMPHS_32<V64, uint32v2_t>;
+DEF_ISEL(CMHI_ASIMDSAME_ONLY_4S) = CMPHI_32<V128, uint32v4_t>;
+DEF_ISEL(CMHS_ASIMDSAME_ONLY_4S) = CMPHS_32<V128, uint32v4_t>;
+DEF_ISEL(CMHI_ASIMDSAME_ONLY_2D) = CMPHI_64<V128, uint64v2_t>;
+DEF_ISEL(CMHS_ASIMDSAME_ONLY_2D) = CMPHS_64<V128, uint64v2_t>;
 
 namespace {
 

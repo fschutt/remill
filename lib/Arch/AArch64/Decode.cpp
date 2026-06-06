@@ -3320,9 +3320,8 @@ bool TryDecodeUCVTF_ASISDMISCFP16_R(const InstData &, Instruction &) {
 //  30 1
 //  31 0
 // UCVTF  <V><d>, <V><n>
-bool TryDecodeUCVTF_ASISDMISC_R(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-06: real decoder moved to Arch.cpp (TryDecodeUCVTF_ASISDMISC_R) — scalar unsigned
+// int→float; the `return false` stub truncated perform_fragment_layout's lift (text layout).
 
 // UCVTF UCVTF_asimdmiscfp16_R:
 //   0 x Rd       0
@@ -4402,8 +4401,13 @@ bool TryDecodeCMHI_ASISDSAME_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // CMHI  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeCMHI_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
+// M12.7 (web): NEON unsigned compare-higher. Same operands/arrangement as CMEQ
+// (the decoder only sets Rd/Rn/Rm + the size suffix from inst.function); the
+// unsigned-vs-signed difference lives in the SEMANTIC (CMPHI vs CMPGT, SIMD.cpp).
+// The vectorized `to_ascii_lowercase` in font-name matching emits cmhi.8b — a hot
+// __remill_error that broke text font resolution (text height 0).
+bool TryDecodeCMHI_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeCMEQ_ASIMDSAME_ONLY(data, inst);
 }
 
 // SQDMLAL SQDMLAL_asisddiff_only:
@@ -4858,8 +4862,12 @@ bool TryDecodeAESE_B_CRYPTOAES(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // STXR  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTXR_SR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
+// M12.7 (web/-lse): plain store-exclusive (no release). Identical operands to
+// STLXR_SR32 (the release variant), whose decoder lives in Arch.cpp — forward
+// to it. The store-release barrier in the STLXR *semantic* is a no-op in the
+// single-threaded wasm lift, so STXR safely reuses it (see DATAXFER.cpp).
+bool TryDecodeSTXR_SR32_LDSTEXCL(const InstData &data, Instruction &inst) {
+  return TryDecodeSTLXR_SR32_LDSTEXCL(data, inst);
 }
 
 // STXR STXR_SR64_ldstexcl:
@@ -4896,8 +4904,9 @@ bool TryDecodeSTXR_SR32_LDSTEXCL(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // STXR  <Ws>, <Xt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTXR_SR64_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
+// M12.7 (web/-lse): plain store-exclusive (64-bit) — forward to STLXR_SR64.
+bool TryDecodeSTXR_SR64_LDSTEXCL(const InstData &data, Instruction &inst) {
+  return TryDecodeSTLXR_SR64_LDSTEXCL(data, inst);
 }
 
 // CMLT CMLT_asisdmisc_Z:
@@ -5124,9 +5133,7 @@ bool TryDecodeFCMEQ_ASIMDSAME_ONLY(const InstData &, Instruction &) {
 //  30 1
 //  31 1
 // CLREX  {#<imm>}
-bool TryDecodeCLREX_BN_SYSTEM(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeCLREX_BN_SYSTEM: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // FSUB FSUB_asimdsamefp16_only:
 //   0 x Rd       0
@@ -7272,9 +7279,7 @@ bool TryDecodeFRINTZ_ASIMDMISC_R(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 0 size     1
 // STXRH  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTXRH_SR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTXRH_SR32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // STEORH STEORH_32S_memop:
 //   0 1 Rt       0
@@ -12721,9 +12726,9 @@ bool TryDecodeSTR_H_LDST_IMMPOST(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // STR  <St>, [<Xn|SP>], #<simm>
-bool TryDecodeSTR_S_LDST_IMMPOST(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-02: was a `return false` stub → str s,[x],#imm hit __remill_error.
+// Impl lives in Arch.cpp (where the static STR_Vn post-index helper is), like STR_Q.
+extern bool TryDecodeSTR_S_LDST_IMMPOST(const InstData &data, Instruction &inst);
 
 // STR STR_D_ldst_immpost:
 //   0 x Rt       0
@@ -12759,9 +12764,10 @@ bool TryDecodeSTR_S_LDST_IMMPOST(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // STR  <Dt>, [<Xn|SP>], #<simm>
-bool TryDecodeSTR_D_LDST_IMMPOST(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-02: was a `return false` stub → `str d,[x],#imm` (Rust auto-vectorizer
+// .2s/f64 spill in the layout per-node loop) hit __remill_error → skipped →
+// corrupted multi-node layout. Impl in Arch.cpp (next to STR_Q), like STR_Q.
+extern bool TryDecodeSTR_D_LDST_IMMPOST(const InstData &data, Instruction &inst);
 
 // STR STR_Q_ldst_immpost:
 //   0 x Rt       0
@@ -13882,9 +13888,7 @@ bool TryDecodeLDUMINL_64_MEMOP(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 0 size     1
 // STXRB  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTXRB_SR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTXRB_SR32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // STLXRH STLXRH_SR32_ldstexcl:
 //   0 x Rt       0
@@ -13920,9 +13924,7 @@ bool TryDecodeSTXRB_SR32_LDSTEXCL(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 0 size     1
 // STLXRH  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTLXRH_SR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTLXRH_SR32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // STLLRH STLLRH_SL32_ldstexcl:
 //   0 x Rt       0
@@ -16236,9 +16238,8 @@ bool TryDecodeFNMUL_H_FLOATDP2(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FNMUL  <Sd>, <Sn>, <Sm>
-bool TryDecodeFNMUL_S_FLOATDP2(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-06: real decoder moved to Arch.cpp (TryDecodeFNMUL_S_FLOATDP2) — was a stub that
+// truncated perform_fragment_layout's lift (text layout).
 
 // FNMUL FNMUL_D_floatdp2:
 //   0 x Rd       0
@@ -16274,9 +16275,8 @@ bool TryDecodeFNMUL_S_FLOATDP2(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FNMUL  <Dd>, <Dn>, <Dm>
-bool TryDecodeFNMUL_D_FLOATDP2(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-06: real decoder moved to Arch.cpp (TryDecodeFNMUL_D_FLOATDP2) — was a stub that
+// truncated perform_fragment_layout's lift (text layout).
 
 // SQSUB SQSUB_asisdsame_only:
 //   0 x Rd       0
@@ -16538,9 +16538,7 @@ bool TryDecodeREV64_REV_64_DP_1SRC(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 0 size     1
 // STLXRB  <Ws>, <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTLXRB_SR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTLXRB_SR32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // STTRH STTRH_32_ldst_unpriv:
 //   0 x Rt       0
@@ -17668,9 +17666,7 @@ extern bool TryDecodeZIP2_ASIMDPERM_ONLY(const InstData &data, Instruction &inst
 //  30 0 size     0
 //  31 0 size     1
 // LDAXRB  <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeLDAXRB_LR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeLDAXRB_LR32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // MSUB MNEG_MSUB_32A_dp_3src:
 //   0 x Rd       0
@@ -21063,9 +21059,7 @@ extern bool TryDecodeDUP_ASIMDINS_DV_V(const InstData &data, Instruction &inst);
 //  30 1 size     0
 //  31 0 size     1
 // STLRH  <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTLRH_SL32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTLRH_SL32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // LDUMAXA LDUMAXA_32_memop:
 //   0 x Rt       0
@@ -23496,9 +23490,7 @@ bool TryDecodeSLI_ASIMDSHF_R(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 0 size     1
 // LDAXRH  <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeLDAXRH_LR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeLDAXRH_LR32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // BFM BFI_BFM_32M_bitfield:
 //   0 x Rd       0
@@ -25316,9 +25308,8 @@ bool TryDecodeFNEG_ASIMDMISCFP16_R(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FNEG  <Vd>.<T>, <Vn>.<T>
-bool TryDecodeFNEG_ASIMDMISC_R(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-06: real decoder moved to Arch.cpp (TryDecodeFNEG_ASIMDMISC_R) — was the
+// `return false` stub that truncated CFG recovery in the layout solver (fneg.2s).
 
 // ADDHN ADDHN_asimddiff_N:
 //   0 x Rd       0
@@ -26444,9 +26435,8 @@ bool TryDecodeFMUL_ASISDELEM_RH_H(const InstData &, Instruction &) {
 //  30 1
 //  31 0
 // FMUL  <V><d>, <V><n>, <Vm>.<Ts>[<index>]
-bool TryDecodeFMUL_ASISDELEM_R_SD(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-06: real decoder moved to Arch.cpp (TryDecodeFMUL_ASISDELEM_R_SD) — scalar FMUL
+// by element; the `return false` stub truncated perform_fragment_layout's lift (text layout).
 
 // FMUL FMUL_asimdelem_RH_H:
 //   0 x Rd       0
@@ -26520,9 +26510,9 @@ bool TryDecodeFMUL_ASIMDELEM_RH_H(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FMUL  <Vd>.<T>, <Vn>.<T>, <Vm>.<Ts>[<index>]
-bool TryDecodeFMUL_ASIMDELEM_R_SD(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-06: real decoder moved to Arch.cpp (TryDecodeFMUL_ASIMDELEM_R_SD) — was the
+// stub blocking the allsorts glyph shaper on the web lift. Stub removed to avoid a
+// duplicate definition (the table at the bottom of this file references the Arch.cpp one).
 
 // SHADD SHADD_asimdsame_only:
 //   0 x Rd       0
@@ -30120,9 +30110,7 @@ bool TryDecodeWFI_HI_SYSTEM(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 0 size     1
 // LDXRH  <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeLDXRH_LR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeLDXRH_LR32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // STLRB STLRB_SL32_ldstexcl:
 //   0 x Rt       0
@@ -30158,9 +30146,7 @@ bool TryDecodeLDXRH_LR32_LDSTEXCL(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 0 size     1
 // STLRB  <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTLRB_SL32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTLRB_SL32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // ST3 ST3_asisdlse_R3:
 //   0 x Rt       0
@@ -33064,9 +33050,7 @@ bool TryDecodeFRINTI_ASIMDMISC_R(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 0 size     1
 // LDXRB  <Wt>, [<Xn|SP>{,#0}]
-bool TryDecodeLDXRB_LR32_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeLDXRB_LR32_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // STP STP_S_ldstpair_post:
 //   0 x Rt       0
@@ -36436,8 +36420,12 @@ bool TryDecodeSQRDMLAH_ASIMDSAME2_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // ORN  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeORN_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
+// Same operand form as ORR/AND/BIC ASIMDSAME (Vd/Vn/Vm, _8B|_16B by Q) — was a
+// `return false` stub, so orn.8b/16b hit __remill_error. Delegate to the ORR
+// decoder (appends the _8B/_16B suffix to inst.function = "ORN_ASIMDSAME_ONLY"),
+// paired with the new ORN_Vec semantic in SIMD.cpp.
+bool TryDecodeORN_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeORR_ASIMDSAME_ONLY(data, inst);
 }
 
 // STSETB STSETB_32S_memop:
@@ -39085,9 +39073,7 @@ extern bool TryDecodeUSHLL_ASIMDSHF_L(const InstData &data, Instruction &inst);
 //  30 1 size     0
 //  31 1 size     1
 // STLR  <Xt>, [<Xn|SP>{,#0}]
-bool TryDecodeSTLR_SL64_LDSTEXCL(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTLR_SL64_LDSTEXCL: real decoder moved to Arch.cpp (azul web byte-atomic lift)
 
 // STSMAXB STSMAXB_32S_memop:
 //   0 1 Rt       0
@@ -42149,9 +42135,8 @@ bool TryDecodeFRINTN_ASIMDMISC_R(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 0 size     1
 // STR  <Bt>, [<Xn|SP>, (<Wm>|<Xm>), <extend> {<amount>}]
-bool TryDecodeSTR_B_LDST_REGOFF(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTR_B_LDST_REGOFF moved to Arch.cpp (M12.7 web): real FP
+// register-offset store needs the static TryDecodeSTR_Vn_LDST_REGOFF helper there.
 
 // STR STR_BL_ldst_regoff:
 //   0 x Rt       0
@@ -42225,9 +42210,8 @@ bool TryDecodeSTR_BL_LDST_REGOFF(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 0 size     1
 // STR  <Ht>, [<Xn|SP>, (<Wm>|<Xm>){, <extend> {<amount>}}]
-bool TryDecodeSTR_H_LDST_REGOFF(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTR_H_LDST_REGOFF moved to Arch.cpp (M12.7 web): real FP
+// register-offset store needs the static TryDecodeSTR_Vn_LDST_REGOFF helper there.
 
 // STR STR_S_ldst_regoff:
 //   0 x Rt       0
@@ -42263,9 +42247,8 @@ bool TryDecodeSTR_H_LDST_REGOFF(const InstData &, Instruction &) {
 //  30 0 size     0
 //  31 1 size     1
 // STR  <St>, [<Xn|SP>, (<Wm>|<Xm>){, <extend> {<amount>}}]
-bool TryDecodeSTR_S_LDST_REGOFF(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTR_S_LDST_REGOFF moved to Arch.cpp (M12.7 web): real FP
+// register-offset store needs the static TryDecodeSTR_Vn_LDST_REGOFF helper there.
 
 // STR STR_D_ldst_regoff:
 //   0 x Rt       0
@@ -42301,9 +42284,8 @@ bool TryDecodeSTR_S_LDST_REGOFF(const InstData &, Instruction &) {
 //  30 1 size     0
 //  31 1 size     1
 // STR  <Dt>, [<Xn|SP>, (<Wm>|<Xm>){, <extend> {<amount>}}]
-bool TryDecodeSTR_D_LDST_REGOFF(const InstData &, Instruction &) {
-  return false;
-}
+// TryDecodeSTR_D_LDST_REGOFF moved to Arch.cpp (M12.7 web): real FP
+// register-offset store needs the static TryDecodeSTR_Vn_LDST_REGOFF helper there.
 
 // LDCLRAB LDCLRAB_32_memop:
 //   0 x Rt       0

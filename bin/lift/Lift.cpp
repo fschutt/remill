@@ -200,15 +200,18 @@ struct SimpleTraceManager : remill::TraceManager {
     // contiguous code extent is the right proxy: ~6 KB for calc_used_size (devirt OK)
     // vs ~65 KB for grid track-sizing (still excluded). 24576 covers
     // layout_document/bfc/ifc (~20-23 KB) too.
-    {
-      uint64_t clo = inst.pc, chi = inst.pc, guard = 0;
-      while (memory.count(clo - 1) && ++guard < (1u << 18)) { clo--; }
-      guard = 0;
-      while (memory.count(chi + 1) && ++guard < (1u << 18)) { chi++; }
-      if (chi - clo > 24576) {
-        return;
-      }
-    }
+    // M12.7+ (2026-06-02): compute the contiguous code extent, but DON'T skip large
+    // fns here. The EXACT jump-table decode below is bounded (<=256 entries; each
+    // target must fall in [arm_block, chi] AND be mapped), so it's safe at ANY size.
+    // The size cap is applied ONLY to the blowup-prone window-sweep FALLBACK (further
+    // down). This unblocks LARGE #[repr(C,u8)] enum matches — CssProperty::{clone,
+    // get_type,eq,hash,cmp} are ~73 KB / 179 arms — whose ldrh jump table was
+    // previously skipped (chi-clo>24576) → br fell to no-op __remill_jump →
+    // mis-dispatch → the web cascade OOB cloning a button's gradient/font-family.
+    uint64_t clo = inst.pc, chi = inst.pc, extent_guard = 0;
+    while (memory.count(clo - 1) && ++extent_guard < (1u << 18)) { clo--; }
+    extent_guard = 0;
+    while (memory.count(chi + 1) && ++extent_guard < (1u << 18)) { chi++; }
     // M12.7: decode the EXACT jump-table targets so the devirt emits ONLY the real arm
     // blocks — NOT the helper-return / continuation addresses a window sweep would add as
     // spurious switch cases (those create dispatch edges into call-return blocks where a
@@ -304,9 +307,9 @@ struct SimpleTraceManager : remill::TraceManager {
               ? (arm_block + off * 4)
               : (arm_block + static_cast<uint64_t>(
                                 static_cast<int64_t>(static_cast<int32_t>(off))));
-          if (tgt < arm_block || tgt > arm_block + 8192 ||
+          if (tgt < arm_block || tgt > chi ||
               memory.find(tgt) == memory.end()) {
-            break;  // past the end of the table
+            break;  // past the end of the table (chi = end of this fn's contiguous code)
           }
           bool dup = false;
           for (uint64_t e : targets) { if (e == tgt) { dup = true; break; } }
@@ -319,6 +322,14 @@ struct SimpleTraceManager : remill::TraceManager {
           return;  // exact decode succeeded
         }
       }
+    }
+    // M12.7+ (2026-06-02): the exact decode failed (table not provided / not
+    // decodable). The window sweep below adds a HUGE case set for big fns (taffy grid
+    // track-sizing ~65 KB, the TrueType hinting bytecode interpreter) → blows up the
+    // lifted IR. Apply the size cap HERE — only the sweep is unsafe; the bounded exact
+    // decode above already ran for all sizes.
+    if (chi - clo > 24576) {
+      return;
     }
     // Fallback window sweep (the table wasn't provided / decodable).
     const uint64_t mlo = memory.begin()->first & ~uint64_t(3);

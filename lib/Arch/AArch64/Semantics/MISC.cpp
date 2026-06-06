@@ -27,3 +27,7 @@ DEF_ISEL(HINT_1) = DoNOP;
 DEF_ISEL(HINT_2) = DoNOP;
 DEF_ISEL(HINT_3) = DoNOP;
 DEF_ISEL(NOP_HI_SYSTEM) = DoNOP;
+// M12.7 (azul web): CLREX clears the local exclusive monitor — a no-op in the
+// single-threaded wasm lift. Appears in std's ldxrb/stxrb retry loops under
+// -Z build-std -C target-feature=-lse. Decoder: Arch.cpp.
+DEF_ISEL(CLREX_BN_SYSTEM) = DoNOP;
