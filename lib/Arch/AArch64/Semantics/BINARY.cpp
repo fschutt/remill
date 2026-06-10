@@ -305,6 +305,74 @@ DEF_SEM(FNMUL_Scalar64, V128W dst, V64 src1, V64 src2) {
   return memory;
 }
 
+// 2026-06-08: FRINTM (scalar) = round toward -Inf (floor). 1-source scalar; mirrors FABS_S.
+// __builtin_floorf/floor lower to wasm-native f32.floor/f64.floor (no libcall — same rationale
+// as the M12.7 vector FRINTA). Decoder TryDecodeFRINTM_{S,D}_FLOATDP1 (Arch.cpp). Used by
+// layout_ifc's coordinate flooring; the decoder stub had truncated that fn's CFG.
+DEF_SEM(FRINTM_S, V128W dst, V32 src) {
+  auto val = FExtractV32(FReadV32(src), 0);
+  auto result = static_cast<float32_t>(__builtin_floorf(val));
+  FWriteV32(dst, result);
+  return memory;
+}
+DEF_SEM(FRINTM_D, V128W dst, V64 src) {
+  auto val = FExtractV64(FReadV64(src), 0);
+  auto result = static_cast<float64_t>(__builtin_floor(val));
+  FWriteV64(dst, result);
+  return memory;
+}
+
+// 2026-06-08: FABD (scalar) = |src1 - src2|. 2-source scalar SIMD; mirrors FABS_S + a subtract.
+// Decoder TryDecodeFABD_ASISDSAME_ONLY (Arch.cpp) appends _S/_D to the iform. Used by layout_ifc.
+DEF_SEM(FABD_Scalar32, V128W dst, V32 src1, V32 src2) {
+  auto a = FExtractV32(FReadV32(src1), 0);
+  auto b = FExtractV32(FReadV32(src2), 0);
+  auto result = static_cast<float32_t>(std::fabs(a - b));
+  FWriteV32(dst, result);
+  return memory;
+}
+DEF_SEM(FABD_Scalar64, V128W dst, V64 src1, V64 src2) {
+  auto a = FExtractV64(FReadV64(src1), 0);
+  auto b = FExtractV64(FReadV64(src2), 0);
+  auto result = static_cast<float64_t>(std::fabs(a - b));
+  FWriteV64(dst, result);
+  return memory;
+}
+
+// 2026-06-08: scalar FP DP1 family — FSQRT + all FRINT rounding modes. 1-source scalar; mirror
+// FRINTM_S. wasm-native __builtin_* (f32.sqrt/ceil/floor/trunc/nearest) — no libcall. FRINTA
+// (ties-away) has no wasm-native op → floor(x+copysign(0.5,x)) (== round-half-away), same as the
+// M12.7 vector FRINTA. FRINTN/X/I all = round-to-nearest-even in the default FPCR mode = f32.nearest
+// (__builtin_nearbyint). Decoders TryDecodeF{SQRT,RINT*}_{S,D}_FLOATDP1 (Arch.cpp).
+#define MAKE_SFP1_S(NAME, EXPR) \
+  DEF_SEM(NAME, V128W dst, V32 src) { \
+    auto v = FExtractV32(FReadV32(src), 0); (void) v; \
+    FWriteV32(dst, static_cast<float32_t>(EXPR)); \
+    return memory; \
+  }
+#define MAKE_SFP1_D(NAME, EXPR) \
+  DEF_SEM(NAME, V128W dst, V64 src) { \
+    auto v = FExtractV64(FReadV64(src), 0); (void) v; \
+    FWriteV64(dst, static_cast<float64_t>(EXPR)); \
+    return memory; \
+  }
+MAKE_SFP1_S(FSQRT_S,  __builtin_sqrtf(v))
+MAKE_SFP1_D(FSQRT_D,  __builtin_sqrt(v))
+MAKE_SFP1_S(FRINTN_S, __builtin_nearbyintf(v))
+MAKE_SFP1_D(FRINTN_D, __builtin_nearbyint(v))
+MAKE_SFP1_S(FRINTP_S, __builtin_ceilf(v))
+MAKE_SFP1_D(FRINTP_D, __builtin_ceil(v))
+MAKE_SFP1_S(FRINTZ_S, __builtin_truncf(v))
+MAKE_SFP1_D(FRINTZ_D, __builtin_trunc(v))
+MAKE_SFP1_S(FRINTA_S, __builtin_floorf(v + __builtin_copysignf(0.5f, v)))
+MAKE_SFP1_D(FRINTA_D, __builtin_floor(v + __builtin_copysign(0.5, v)))
+MAKE_SFP1_S(FRINTX_S, __builtin_nearbyintf(v))
+MAKE_SFP1_D(FRINTX_D, __builtin_nearbyint(v))
+MAKE_SFP1_S(FRINTI_S, __builtin_nearbyintf(v))
+MAKE_SFP1_D(FRINTI_D, __builtin_nearbyint(v))
+#undef MAKE_SFP1_S
+#undef MAKE_SFP1_D
+
 DEF_SEM(FDIV_Scalar32, V128W dst, V32 src1, V32 src2) {
   auto val1 = FExtractV32(FReadV32(src1), 0);
   auto val2 = FExtractV32(FReadV32(src2), 0);
@@ -532,6 +600,29 @@ DEF_ISEL(FABS_D_FLOATDP1) = FABS_D;
 
 DEF_ISEL(FNEG_S_FLOATDP1) = FNEG_S;
 DEF_ISEL(FNEG_D_FLOATDP1) = FNEG_D;
+
+// 2026-06-08: scalar FRINTM (floor) + FABD (|a-b|). The FABD iform gets a _S/_D suffix from
+// its decoder so each size resolves to the matching semantic.
+DEF_ISEL(FRINTM_S_FLOATDP1) = FRINTM_S;
+DEF_ISEL(FRINTM_D_FLOATDP1) = FRINTM_D;
+DEF_ISEL(FABD_ASISDSAME_ONLY_S) = FABD_Scalar32;
+DEF_ISEL(FABD_ASISDSAME_ONLY_D) = FABD_Scalar64;
+
+// 2026-06-08: scalar FP DP1 family ISELs (FSQRT + FRINT rounding modes).
+DEF_ISEL(FSQRT_S_FLOATDP1) = FSQRT_S;
+DEF_ISEL(FSQRT_D_FLOATDP1) = FSQRT_D;
+DEF_ISEL(FRINTN_S_FLOATDP1) = FRINTN_S;
+DEF_ISEL(FRINTN_D_FLOATDP1) = FRINTN_D;
+DEF_ISEL(FRINTP_S_FLOATDP1) = FRINTP_S;
+DEF_ISEL(FRINTP_D_FLOATDP1) = FRINTP_D;
+DEF_ISEL(FRINTZ_S_FLOATDP1) = FRINTZ_S;
+DEF_ISEL(FRINTZ_D_FLOATDP1) = FRINTZ_D;
+DEF_ISEL(FRINTA_S_FLOATDP1) = FRINTA_S;
+DEF_ISEL(FRINTA_D_FLOATDP1) = FRINTA_D;
+DEF_ISEL(FRINTX_S_FLOATDP1) = FRINTX_S;
+DEF_ISEL(FRINTX_D_FLOATDP1) = FRINTX_D;
+DEF_ISEL(FRINTI_S_FLOATDP1) = FRINTI_S;
+DEF_ISEL(FRINTI_D_FLOATDP1) = FRINTI_D;
 
 DEF_ISEL(FCMPE_S_FLOATCMP) = FCMPE_S;
 DEF_ISEL(FCMPE_SZ_FLOATCMP) = FCMPE_SZ;

@@ -688,6 +688,35 @@ MAKE_FRINTA_VEC(FRINTA_VEC_4S, FReadV32, FExtractV32, float32_t, FWriteV32, floa
 MAKE_FRINTA_VEC(FRINTA_VEC_2D, FReadV64, FExtractV64, float64_t, FWriteV64, float64v2_t, 2, 0.5, __builtin_floor, __builtin_copysign)
 #undef MAKE_FRINTA_VEC
 
+// 2026-06-08: vector FP compare-greater-than (FCMGT, 3-same). Per-lane (a>b)?all-ones:0 integer
+// mask. Used by the layout's ShapeDefinition::get_size. NaN → false (>, ordered). Decoder reuses
+// TryDecodeFP_ASIMDSAME_3 (kRegV, arrangement suffix _2S/_4S/_2D).
+#define MAKE_FCMGT_VEC(NAME, RDV, EXV, IWRV, IDV, IT, NL) \
+  DEF_SEM(NAME, V128W dst, V128 src1, V128 src2) { \
+    auto v1 = RDV(src1); auto v2 = RDV(src2); \
+    IDV res = {}; \
+    _Pragma("unroll") for (size_t i = 0; i < (NL); ++i) { \
+      res.elems[i] = (EXV(v1, i) > EXV(v2, i)) ? static_cast<IT>(~static_cast<IT>(0)) : static_cast<IT>(0); \
+    } \
+    IWRV(dst, res); \
+    return memory; \
+  }
+MAKE_FCMGT_VEC(FCMGT_VEC_2S, FReadV32, FExtractV32, UWriteV32, uint32v2_t, uint32_t, 2)
+MAKE_FCMGT_VEC(FCMGT_VEC_4S, FReadV32, FExtractV32, UWriteV32, uint32v4_t, uint32_t, 4)
+MAKE_FCMGT_VEC(FCMGT_VEC_2D, FReadV64, FExtractV64, UWriteV64, uint64v2_t, uint64_t, 2)
+#undef MAKE_FCMGT_VEC
+
+// 2026-06-08: FCVTN (vector FP narrow, f64->f32, .2s<-.2d). Q=0 writes low 64 + zeroes upper.
+// Used by IntrinsicSizeCalculator. f16 narrowing (size=0) not supported (decoder returns false).
+DEF_SEM(FCVTN_2S, V128W dst, V128 src) {
+  auto v = FReadV64(src);
+  float32v2_t res = {};
+  res.elems[0] = static_cast<float32_t>(FExtractV64(v, 0));
+  res.elems[1] = static_cast<float32_t>(FExtractV64(v, 1));
+  FWriteV32(dst, res);
+  return memory;
+}
+
 // M12.7: SQXTN / SQXTN2 — signed saturating extract narrow, i32 -> i16 (the .4h/.8h forms
 // the layout uses). SQXTN (.4h, Q=0) writes the low 64 bits and zeroes the upper; SQXTN2
 // (.8h, Q=1) writes the upper 64 bits (lanes 4-7) preserving the lower. Saturate to i16.
@@ -843,6 +872,11 @@ DEF_ISEL(FSUB_ASIMDSAME_ONLY_2D) = FSUB_VEC_2D;
 DEF_ISEL(FMUL_ASIMDSAME_ONLY_2S) = FMUL_VEC_2S;
 DEF_ISEL(FMUL_ASIMDSAME_ONLY_4S) = FMUL_VEC_4S;
 DEF_ISEL(FMUL_ASIMDSAME_ONLY_2D) = FMUL_VEC_2D;
+// 2026-06-08: vector FP compare-gt (FCMGT) + narrow (FCVTN).
+DEF_ISEL(FCMGT_ASIMDSAME_ONLY_2S) = FCMGT_VEC_2S;
+DEF_ISEL(FCMGT_ASIMDSAME_ONLY_4S) = FCMGT_VEC_4S;
+DEF_ISEL(FCMGT_ASIMDSAME_ONLY_2D) = FCMGT_VEC_2D;
+DEF_ISEL(FCVTN_ASIMDMISC_N_2S) = FCVTN_2S;
 // 2026-06-06: FMUL (by element) — names from TryDecodeFMUL_ASIMDELEM_R_SD + arrangement suffix.
 DEF_ISEL(FMUL_ASIMDELEM_R_SD_2S) = FMUL_ELT_2S;
 DEF_ISEL(FMUL_ASIMDELEM_R_SD_4S) = FMUL_ELT_4S;

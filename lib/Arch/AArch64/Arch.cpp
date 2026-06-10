@@ -3339,6 +3339,79 @@ bool TryDecodeFNEG_D_FLOATDP1(const InstData &data, Instruction &inst) {
   return true;
 }
 
+// 2026-06-08: FRINTM (scalar) = round toward -Inf (floor). 1-source scalar FP DP1, same
+// Fd<-Fn shape as FABS/FNEG. Was a `return false` stub (Decode.cpp). The layout solver's
+// coordinate flooring (layout_ifc) uses `frintm s,s`; the stub truncated layout_ifc's CFG
+// (silent, rc=0) → the nested-text inline-content Vec `len` read garbage downstream → text
+// never positioned. Semantic FRINTM_{S,D} (BINARY.cpp) uses __builtin_floor* (wasm-native).
+// FRINTM  <Sd>, <Sn>
+bool TryDecodeFRINTM_S_FLOATDP1(const InstData &data, Instruction &inst) {
+  if (IsUnallocatedFloatEncoding(data)) {
+    return false;
+  }
+  AddRegOperand(inst, kActionWrite, kRegS, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegS, kUseAsValue, data.Rn);
+  return true;
+}
+
+// FRINTM  <Dd>, <Dn>
+bool TryDecodeFRINTM_D_FLOATDP1(const InstData &data, Instruction &inst) {
+  if (IsUnallocatedFloatEncoding(data)) {
+    return false;
+  }
+  AddRegOperand(inst, kActionWrite, kRegD, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegD, kUseAsValue, data.Rn);
+  return true;
+}
+
+// 2026-06-08: FABD (scalar) = |Sn - Sm|. 2-source scalar SIMD (ASISDSAME); sz (bit 22) picks
+// S(0)/D(1). Was a `return false` stub (Decode.cpp). Also used by layout_ifc (same CFG-truncation
+// class as FRINTM above). Append _S/_D to the iform so the size-specific DEF_ISEL resolves the
+// matching FABD_Scalar{32,64} semantic (BINARY.cpp). Operands are scalar S/D regs like FADD_S.
+// FABD  <V><d>, <V><n>, <V><m>
+bool TryDecodeFABD_ASISDSAME_ONLY(const InstData &data, Instruction &inst) {
+  const uint64_t sz = data.size & 1ULL;  // bit 22: 0=f32(S), 1=f64(D)
+  if (sz) {
+    inst.function += "_D";
+    AddRegOperand(inst, kActionWrite, kRegD, kUseAsValue, data.Rd);
+    AddRegOperand(inst, kActionRead, kRegD, kUseAsValue, data.Rn);
+    AddRegOperand(inst, kActionRead, kRegD, kUseAsValue, data.Rm);
+  } else {
+    inst.function += "_S";
+    AddRegOperand(inst, kActionWrite, kRegS, kUseAsValue, data.Rd);
+    AddRegOperand(inst, kActionRead, kRegS, kUseAsValue, data.Rn);
+    AddRegOperand(inst, kActionRead, kRegS, kUseAsValue, data.Rm);
+  }
+  return true;
+}
+
+// 2026-06-08: complete the scalar FP DP1 family (FSQRT + all FRINT rounding modes). All were
+// `return false` stubs; identical 1-source Fd<-Fn shape as FABS/FNEG/FRINTM. Used across the azul
+// layout's coordinate/size math (get_line_constraints=FSQRT, ShapeDefinition::get_size=FRINTP, etc.)
+// — each stub silently truncated its fn's CFG. Semantics (BINARY.cpp) use wasm-native __builtin_*.
+static bool TryDecodeScalarFP_DP1(const InstData &data, Instruction &inst, RegClass rc) {
+  if (IsUnallocatedFloatEncoding(data)) {
+    return false;
+  }
+  AddRegOperand(inst, kActionWrite, rc, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, rc, kUseAsValue, data.Rn);
+  return true;
+}
+bool TryDecodeFSQRT_S_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegS); }
+bool TryDecodeFSQRT_D_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegD); }
+bool TryDecodeFRINTN_S_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegS); }
+bool TryDecodeFRINTN_D_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegD); }
+bool TryDecodeFRINTP_S_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegS); }
+bool TryDecodeFRINTP_D_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegD); }
+bool TryDecodeFRINTZ_S_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegS); }
+bool TryDecodeFRINTZ_D_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegD); }
+bool TryDecodeFRINTA_S_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegS); }
+bool TryDecodeFRINTA_D_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegD); }
+bool TryDecodeFRINTX_S_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegS); }
+bool TryDecodeFRINTX_D_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegD); }
+bool TryDecodeFRINTI_S_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegS); }
+bool TryDecodeFRINTI_D_FLOATDP1(const InstData &d, Instruction &i) { return TryDecodeScalarFP_DP1(d, i, kRegD); }
+
 // SVC  #<imm>
 bool TryDecodeSVC_EX_EXCEPTION(const InstData &data, Instruction &inst) {
   AddImmOperand(inst, data.imm16.uimm, kUnsigned, 32);
@@ -3354,6 +3427,7 @@ bool TryDecodeBRK_EX_EXCEPTION(const InstData &data, Instruction &inst) {
 union SystemReg {
   uint64_t flat;
   enum Name : uint64_t {
+    kNZCV = 0xDA10,
     kFPCR = 0xDA20,
     kFPSR = 0xDA21,
     kTPIDR_EL0 = 0xDE82,
@@ -3378,6 +3452,7 @@ static bool AppendSysRegName(Instruction &inst, SystemReg bits) {
   ss << inst.function << "_";
 
   switch (bits.name) {
+    case SystemReg::kNZCV: ss << "NZCV"; break;
     case SystemReg::kFPCR: ss << "FPCR"; break;
     case SystemReg::kFPSR: ss << "FPSR"; break;
     case SystemReg::kTPIDR_EL0: ss << "TPIDR_EL0"; break;
@@ -4519,6 +4594,24 @@ bool TryDecodeFMUL_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
 }
 bool TryDecodeFDIV_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
   return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+// 2026-06-08: FCMGT (vector FP compare >). Same 3-V-reg ASIMDSAME shape as FADD; per-lane mask.
+// Used by ShapeDefinition::get_size. Was a Decode.cpp `return false` stub.
+bool TryDecodeFCMGT_ASIMDSAME_ONLY(const InstData &data, Instruction &inst) {
+  return TryDecodeFP_ASIMDSAME_3(data, inst);
+}
+// 2026-06-08: FCVTN (vector FP narrow). Only f32<-f64 (.2s<-.2d, size bit22=1, Q=0 = FCVTN low
+// half, upper zeroed). f16 narrowing (size=0) + FCVTN2 (Q=1) unsupported → false. Used by
+// IntrinsicSizeCalculator. Was a Decode.cpp `return false` stub. ISEL suffix _2S.
+bool TryDecodeFCVTN_ASIMDMISC_N(const InstData &data, Instruction &inst) {
+  // NB: this iform's extraction populates `sz` (bit 22), NOT `size` — TryExtractFCVTN_ASIMDMISC_N.
+  if (data.sz != 1 || data.Q) {
+    return false;  // only f32<-f64 (.2s<-.2d, sz=1), Q=0 (FCVTN low half)
+  }
+  inst.function += "_2S";
+  AddRegOperand(inst, kActionWrite, kRegV, kUseAsValue, data.Rd);
+  AddRegOperand(inst, kActionRead, kRegV, kUseAsValue, data.Rn);
+  return true;
 }
 
 // 2026-06-06: FMUL (by element), vector, single/double-precision (FMUL_asimdelem_R_SD)

@@ -80,6 +80,36 @@ DEF_SEM(DoMSR_SR_SYSTEM_TPIDR_EL0, R64 src) {
   return memory;
 }
 
+// AArch64 (azul web-lift): `mrs <Xt>, NZCV` / `msr NZCV, <Xt>` — LLVM emits
+// these to save/restore the condition flags around flag-clobbering sequences
+// (e.g. the branchless compare networks in Rust's `core::slice::sort`
+// smallsort). The architectural NZCV register is composed from / decomposed
+// into remill's per-flag `state.sr.{n,z,c,v}` bytes, which all other
+// semantics (branches, CSEL, CCMP) read and write.
+DEF_SEM(DoMRS_RS_SYSTEM_NZCV, R64W dest) {
+  NZCV nzcv;
+  nzcv.flat = 0;
+  nzcv.n = FLAG_N ? 1 : 0;
+  nzcv.z = FLAG_Z ? 1 : 0;
+  nzcv.c = FLAG_C ? 1 : 0;
+  nzcv.v = FLAG_V ? 1 : 0;
+  WriteZExt(dest, nzcv.flat);
+  return memory;
+}
+
+DEF_SEM(DoMSR_SR_SYSTEM_NZCV, R64 src) {
+  NZCV nzcv;
+  nzcv.flat = Read(src);
+  nzcv._0 = 0;
+  nzcv._1 = 0;
+  state.nzcv = nzcv;
+  FLAG_N = static_cast<uint8_t>(nzcv.n);
+  FLAG_Z = static_cast<uint8_t>(nzcv.z);
+  FLAG_C = static_cast<uint8_t>(nzcv.c);
+  FLAG_V = static_cast<uint8_t>(nzcv.v);
+  return memory;
+}
+
 DEF_SEM(DataMemoryBarrier) {
 
   // TODO(pag): Full-system data memory barrier probably requires a synchronous
@@ -100,5 +130,8 @@ DEF_ISEL(MSR_SR_SYSTEM_FPCR) = DoMSR_SR_SYSTEM_FPCR;
 
 DEF_ISEL(MRS_RS_SYSTEM_TPIDR_EL0) = DoMRS_RS_SYSTEM_TPIDR_EL0;
 DEF_ISEL(MSR_SR_SYSTEM_TPIDR_EL0) = DoMSR_SR_SYSTEM_TPIDR_EL0;
+
+DEF_ISEL(MRS_RS_SYSTEM_NZCV) = DoMRS_RS_SYSTEM_NZCV;
+DEF_ISEL(MSR_SR_SYSTEM_NZCV) = DoMSR_SR_SYSTEM_NZCV;
 
 DEF_ISEL(DMB_BO_SYSTEM) = DataMemoryBarrier;

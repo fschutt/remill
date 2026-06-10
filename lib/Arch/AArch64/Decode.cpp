@@ -896,9 +896,7 @@ bool TryDecodeLSR_LSRV_64_DP_2SRC(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FCVTN{2}  <Vd>.<Tb>, <Vn>.<Ta>
-bool TryDecodeFCVTN_ASIMDMISC_N(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFCVTN_ASIMDMISC_N).
 
 // CSNEG CNEG_CSNEG_32_condsel:
 //   0 x Rd       0
@@ -1796,9 +1794,7 @@ bool TryDecodeFSQRT_H_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FSQRT  <Sd>, <Sn>
-bool TryDecodeFSQRT_S_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFSQRT_S_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FSQRT FSQRT_D_floatdp1:
 //   0 x Rd       0
@@ -1834,9 +1830,7 @@ bool TryDecodeFSQRT_S_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FSQRT  <Dd>, <Dn>
-bool TryDecodeFSQRT_D_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFSQRT_D_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // LDEORA LDEORA_32_memop:
 //   0 x Rt       0
@@ -2236,9 +2230,7 @@ bool TryDecodeFRINTM_H_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTM  <Sd>, <Sn>
-bool TryDecodeFRINTM_S_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (needs AddRegOperand/kRegS scope).
 
 // FRINTM FRINTM_D_floatdp1:
 //   0 x Rd       0
@@ -2274,9 +2266,7 @@ bool TryDecodeFRINTM_S_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTM  <Dd>, <Dn>
-bool TryDecodeFRINTM_D_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (needs AddRegOperand/kRegD scope).
 
 // LDUMINAB LDUMINAB_32_memop:
 //   0 x Rt       0
@@ -4596,9 +4586,7 @@ bool TryDecodeFRINTX_H_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTX  <Sd>, <Sn>
-bool TryDecodeFRINTX_S_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTX_S_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FRINTX FRINTX_D_floatdp1:
 //   0 x Rd       0
@@ -4634,9 +4622,7 @@ bool TryDecodeFRINTX_S_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTX  <Dd>, <Dn>
-bool TryDecodeFRINTX_D_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTX_D_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // LDUMAXAB LDUMAXAB_32_memop:
 //   0 x Rt       0
@@ -8715,9 +8701,7 @@ bool TryDecodeFCMGT_ASIMDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 x Q        0
 //  31 0
 // FCMGT  <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
-bool TryDecodeFCMGT_ASIMDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFCMGT_ASIMDSAME_ONLY).
 
 // USUBW USUBW_asimddiff_W:
 //   0 x Rd       0
@@ -13182,9 +13166,7 @@ bool TryDecodeFRINTP_H_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTP  <Sd>, <Sn>
-bool TryDecodeFRINTP_S_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTP_S_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FRINTP FRINTP_D_floatdp1:
 //   0 x Rd       0
@@ -13220,9 +13202,7 @@ bool TryDecodeFRINTP_S_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTP  <Dd>, <Dn>
-bool TryDecodeFRINTP_D_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTP_D_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // CASA CASA_C32_ldstexcl:
 //   0 x Rt       0
@@ -19396,9 +19376,7 @@ bool TryDecodeFRINTI_H_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTI  <Sd>, <Sn>
-bool TryDecodeFRINTI_S_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTI_S_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FRINTI FRINTI_D_floatdp1:
 //   0 x Rd       0
@@ -19434,9 +19412,7 @@ bool TryDecodeFRINTI_S_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTI  <Dd>, <Dn>
-bool TryDecodeFRINTI_D_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTI_D_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FMADD FMADD_H_floatdp3:
 //   0 x Rd       0
@@ -20490,9 +20466,7 @@ bool TryDecodeFRINTN_H_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTN  <Sd>, <Sn>
-bool TryDecodeFRINTN_S_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTN_S_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FRINTN FRINTN_D_floatdp1:
 //   0 x Rd       0
@@ -20528,9 +20502,7 @@ bool TryDecodeFRINTN_S_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTN  <Dd>, <Dn>
-bool TryDecodeFRINTN_D_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTN_D_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // ESB ESB_HI_system:
 //   0 1 Rt       0
@@ -21779,9 +21751,7 @@ bool TryDecodeFRINTZ_H_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTZ  <Sd>, <Sn>
-bool TryDecodeFRINTZ_S_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTZ_S_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FRINTZ FRINTZ_D_floatdp1:
 //   0 x Rd       0
@@ -21817,9 +21787,7 @@ bool TryDecodeFRINTZ_S_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTZ  <Dd>, <Dn>
-bool TryDecodeFRINTZ_D_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTZ_D_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // SCVTF SCVTF_H32_float2fix:
 //   0 x Rd       0
@@ -37335,9 +37303,7 @@ bool TryDecodeFRINTA_H_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTA  <Sd>, <Sn>
-bool TryDecodeFRINTA_S_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTA_S_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FRINTA FRINTA_D_floatdp1:
 //   0 x Rd       0
@@ -37373,9 +37339,7 @@ bool TryDecodeFRINTA_S_FLOATDP1(const InstData &, Instruction &) {
 //  30 0
 //  31 0 M        0
 // FRINTA  <Dd>, <Dn>
-bool TryDecodeFRINTA_D_FLOATDP1(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (TryDecodeFRINTA_D_FLOATDP1 → TryDecodeScalarFP_DP1).
 
 // FCSEL FCSEL_H_floatsel:
 //   0 x Rd       0
@@ -40737,9 +40701,7 @@ bool TryDecodeFABD_ASISDSAMEFP16_ONLY(const InstData &, Instruction &) {
 //  30 1
 //  31 0
 // FABD  <V><d>, <V><n>, <V><m>
-bool TryDecodeFABD_ASISDSAME_ONLY(const InstData &, Instruction &) {
-  return false;
-}
+// 2026-06-08: real decoder moved to Arch.cpp (scalar |Sn-Sm|; needs AddRegOperand scope).
 
 // FABD FABD_asimdsamefp16_only:
 //   0 x Rd       0
