@@ -265,8 +265,22 @@ bool TraceLifter::Impl::Lift(
   };
 
   trace_work_list.insert(addr);
+  // Traces actually lifted in THIS call. The manager's GetLiftedTraceDefinition
+  // returns null for the entry address by design (so the entry is lifted here
+  // rather than treated as extern) — so it can't be the convergence guard for
+  // the entry. If anything re-inserts the entry trace into the work list (e.g.
+  // an x86 dense `match`/switch whose devirtualized arm targets feed an address
+  // back through the decoder), the entry would re-lift forever. This local set
+  // makes the outer loop idempotent regardless of the manager's entry special-
+  // case. (No behavior change where the entry is never re-inserted — e.g.
+  // aarch64 fixed-length jump tables.)
+  DecoderWorkList az_lifted_traces;
   while (!trace_work_list.empty()) {
     const auto trace_addr = PopTraceAddress();
+
+    if (az_lifted_traces.count(trace_addr)) {
+      continue;
+    }
 
     // Already lifted.
     func = GetLiftedTraceDefinition(trace_addr);
@@ -689,6 +703,7 @@ bool TraceLifter::Impl::Lift(
 
     callback(trace_addr, func);
     manager.SetLiftedTraceDefinition(trace_addr, func);
+    az_lifted_traces.insert(trace_addr);
   }
 
   return true;

@@ -158,6 +158,81 @@ struct SimpleTraceManager : remill::TraceManager {
         memory.empty() || inst.pc < 4) {
       return;
     }
+    // x86/AMD64: the AArch64 pattern-detector below reads the bytes preceding
+    // the indirect jump as 4-byte ARM words. On x86 they're variable-length x86
+    // instructions: the ARM bit-checks FALSE-POSITIVE, the exact decode fails,
+    // and the fallback WINDOW SWEEP (further down) then emits hundreds of
+    // 4-byte-aligned addresses as switch targets — many land MID x86 instruction,
+    // so the lifter decodes bogus instructions (e.g. resolve_font_size_slow's
+    // cvtsi2ss arm opcode bytes `0f 2a c0` as CVTPI2PS) and aborts in
+    // InstructionLifter ("Expected XMM to be an integral type [16 x i8] vs i64").
+    // Handle the x86 compiler jump-table idiom explicitly and RETURN (never reach
+    // the ARM path / sweep). LLVM lowers a dense `match` to:
+    //   lea disp32(%rip),%Rb ; movslq (%Rb,%Ri,4),%Rt ; add %Rb,%Rt ; jmp *%Rt
+    // The i32 offset table lives in .rodata (provided via --extra_data); table
+    // base = (jmp_pc - 7) + disp32, target[i] = base + (i32)tbl[i]. Emit only the
+    // in-function targets; the first off-function entry ends the table. No idiom /
+    // no table => emit nothing => the caller falls back to __remill_jump (the
+    // host indirect-dispatch path every other x86 indirect jump already uses).
+    if (arch && (arch->IsAMD64() || arch->IsX86())) {
+      auto rdb = [&](uint64_t a, uint8_t &v) -> bool {
+        auto it = memory.find(a);
+        if (it == memory.end()) return false;
+        v = it->second;
+        return true;
+      };
+      uint8_t b;
+      bool ok = inst.pc >= 14;
+      // lea %Rb,[rip+disp32]: REX.W 8D /r, modrm mod=00 rm=101
+      if (ok) ok = rdb(inst.pc - 14, b) && (b & 0xF8) == 0x48;
+      if (ok) ok = rdb(inst.pc - 13, b) && b == 0x8D;
+      if (ok) ok = rdb(inst.pc - 12, b) && (b & 0xC7) == 0x05;
+      // movslq %Rt,[%Rb+%Ri*4]: REX.W 63 /r (+SIB)
+      if (ok) ok = rdb(inst.pc - 7, b) && (b & 0xF8) == 0x48;
+      if (ok) ok = rdb(inst.pc - 6, b) && b == 0x63;
+      // add %Rt,%Rb: REX.W 01 /r
+      if (ok) ok = rdb(inst.pc - 3, b) && (b & 0xF8) == 0x48;
+      if (ok) ok = rdb(inst.pc - 2, b) && b == 0x01;
+      if (ok) {
+        int32_t disp = 0;
+        for (int i = 0; i < 4 && ok; i++) {
+          uint8_t d;
+          if (rdb(inst.pc - 11 + i, d)) disp |= static_cast<int32_t>(d) << (8 * i);
+          else ok = false;
+        }
+        if (ok) {
+          const uint64_t tbl_base =
+              (inst.pc - 7) + static_cast<uint64_t>(static_cast<int64_t>(disp));
+          uint64_t clo = inst.pc, chi = inst.pc, guard = 0;
+          while (memory.count(clo - 1) && ++guard < (1u << 18)) clo--;
+          guard = 0;
+          while (memory.count(chi + 1) && ++guard < (1u << 18)) chi++;
+          std::vector<uint64_t> emitted;
+          for (int i = 0; i < 1024; i++) {
+            int32_t off = 0;
+            bool got = true;
+            for (int k = 0; k < 4; k++) {
+              uint8_t e;
+              if (rdb(tbl_base + static_cast<uint64_t>(i) * 4 + k, e))
+                off |= static_cast<int32_t>(e) << (8 * k);
+              else { got = false; break; }
+            }
+            if (!got) break;
+            const uint64_t tgt =
+                tbl_base + static_cast<uint64_t>(static_cast<int64_t>(off));
+            if (tgt < clo || tgt > chi) break;  // first off-function entry ends the table
+            bool dup = false;
+            for (uint64_t e : emitted) if (e == tgt) { dup = true; break; }
+            if (!dup) {
+              emitted.push_back(tgt);
+              func(tgt, remill::DevirtualizedTargetKind::kTraceLocal);
+            }
+            if (emitted.size() >= 256) break;
+          }
+        }
+      }
+      return;
+    }
     // Only devirt the COMPILER JUMP-TABLE pattern: `br Xn` immediately preceded
     // by `add Xn, Xn, Xm, lsl #2` (the table-target computation). Skip every
     // other indirect jump (e.g. a bytecode interpreter's fn-ptr `br` dispatch),
