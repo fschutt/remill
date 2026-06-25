@@ -263,6 +263,13 @@ DEF_SEM(SHUFPD, D dst, S1 src1, S2 src2, I8 src3) {
 }  // namespace
 
 DEF_ISEL(SHUFPD_XMMpd_XMMpd_IMMb) = SHUFPD<V128W, V128, V128>;
+// WEB-LIFT FIX (2026-06-24): the memory-operand form was MISSING (SHUFPS has both register +
+// memory variants @236-237, but SHUFPD only had the register form). The Rust auto-vectorizer
+// emits `shufpd $imm, m128, xmm` (e.g. in hashbrown's SwissTable bit-mask math), which remill's
+// XED decoded but had no DEF_SEM for → DEF_ISEL(UNSUPPORTED_INSTRUCTION)=HandleUnsupported →
+// __remill_sync_hyper_call(kAMD64EmulateInstruction=257) + __remill_error → the fn bails. This is
+// why EVERY HashMap (SwissTable) traps/hangs in the wasm backend while BTreeMaps work. Mirror SHUFPS.
+DEF_ISEL(SHUFPD_XMMpd_MEMpd_IMMb) = SHUFPD<V128W, V128, MV128>;
 
 
 namespace {
@@ -389,6 +396,10 @@ IF_AVX(DEF_ISEL(VPSHUFLW_YMMqq_YMMqq_IMMb) = PSHUFLW<VV256W, V256>;)
 */
 
 DEF_ISEL(PSHUFHW_XMMdq_XMMdq_IMMb) = PSHUFHW<V128W, V128>;
+// WEB-LIFT FIX (2026-06-24): the memory-operand form was MISSING (only the
+// register form existed), so an auto-vectorized `pshufhw $imm,mem,xmm` lifted to
+// HandleUnsupported -> __remill_error. Mirror PSHUFLW (line ~382) / PSHUFD (~301).
+DEF_ISEL(PSHUFHW_XMMdq_MEMdq_IMMb) = PSHUFHW<V128W, MV128>;
 
 namespace {
 
@@ -1456,6 +1467,62 @@ DEF_ISEL(MAXPS_XMMps_MEMps) = MAXPS<V128W, V128, MV128>;
 
 namespace {
 
+// WEB-LIFT FIX (2026-06-24): MINPD/MAXPD (packed-DOUBLE min/max) were MISSING
+// (only the single-precision MINPS/MAXPS existed). The layout solver clamps
+// f64 sizes/positions. Mirror MINPS/MAXPS with 64-bit lanes + NaN/zero rules.
+template <typename D, typename S1, typename S2>
+DEF_SEM(MINPD, D dst, S1 src1, S2 src2) {
+  auto dest_vec = FReadV64(src1);
+  auto src2_vec = FReadV64(src2);
+  auto vec_count = NumVectorElems(src2_vec);
+  _Pragma("unroll") for (std::size_t i = 0; i < vec_count; i++) {
+    auto v1 = FExtractV64(dest_vec, i);
+    auto v2 = FExtractV64(src2_vec, i);
+    auto min = v1;
+    if (__builtin_isunordered(v1, v2)) {
+      min = v2;
+    } else if ((v1 == 0.0) && (v2 == 0.0)) {
+      min = v2;
+    } else if (__builtin_isless(v2, v1)) {
+      min = v2;
+    }
+    dest_vec = FInsertV64(dest_vec, i, min);
+  }
+  FWriteV64(dst, dest_vec);
+  return memory;
+}
+
+template <typename D, typename S1, typename S2>
+DEF_SEM(MAXPD, D dst, S1 src1, S2 src2) {
+  auto dest_vec = FReadV64(src1);
+  auto src2_vec = FReadV64(src2);
+  auto vec_count = NumVectorElems(src2_vec);
+  _Pragma("unroll") for (std::size_t i = 0; i < vec_count; i++) {
+    auto v1 = FExtractV64(dest_vec, i);
+    auto v2 = FExtractV64(src2_vec, i);
+    auto max = v1;
+    if (__builtin_isunordered(v1, v2)) {
+      max = v2;
+    } else if ((v1 == 0.0) && (v2 == 0.0)) {
+      max = v2;
+    } else if (__builtin_isgreater(v2, v1)) {
+      max = v2;
+    }
+    dest_vec = FInsertV64(dest_vec, i, max);
+  }
+  FWriteV64(dst, dest_vec);
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(MINPD_XMMpd_XMMpd) = MINPD<V128W, V128, V128>;
+DEF_ISEL(MINPD_XMMpd_MEMpd) = MINPD<V128W, V128, MV128>;
+DEF_ISEL(MAXPD_XMMpd_XMMpd) = MAXPD<V128W, V128, V128>;
+DEF_ISEL(MAXPD_XMMpd_MEMpd) = MAXPD<V128W, V128, MV128>;
+
+namespace {
+
 template <typename D, typename S1, typename S2>
 DEF_SEM(UNPCKLPS, D dst, S1 src1, S2 src2) {
 
@@ -1624,6 +1691,55 @@ DEF_ISEL(MOVDDUP_XMMdq_MEMq) = MOVDDUP<V128W, MV64>;
 DEF_ISEL(MOVDDUP_XMMdq_XMMq) = MOVDDUP<V128W, V128>;
 IF_AVX(DEF_ISEL(VMOVDDUP_XMMdq_MEMq) = MOVDDUP<VV128W, MV64>;)
 IF_AVX(DEF_ISEL(VMOVDDUP_XMMdq_XMMq) = MOVDDUP<VV128W, V128>;)
+
+namespace {
+
+// WEB-LIFT FIX (2026-06-24): MOVSHDUP / MOVSLDUP (SSE3 packed-single duplicate)
+// were COMPLETELY MISSING from remill (no DEF_SEM and no DEF_ISEL — only MOVDDUP
+// existed). The Rust auto-vectorizer emits them for horizontal float reductions
+// (e.g. `movshdup xmm,xmm; ucomiss` to extract the odd lanes) on the MAIN layout
+// path (azul_layout::solver3::layout_document) -> they lifted to HandleUnsupported
+// -> __remill_error -> the lifted fn bailed (the lifted layout solve hung).
+template <typename D, typename S1>
+DEF_SEM(MOVSHDUP, D dst, S1 src) {
+  // Move high singles and duplicate: dst = {src[1], src[1], src[3], src[3]}.
+  auto src_vec = FReadV32(src);
+  auto s1 = FExtractV32(src_vec, 1);
+  auto s3 = FExtractV32(src_vec, 3);
+  float32v4_t temp_vec = {};
+  temp_vec = FInsertV32(temp_vec, 0, s1);
+  temp_vec = FInsertV32(temp_vec, 1, s1);
+  temp_vec = FInsertV32(temp_vec, 2, s3);
+  temp_vec = FInsertV32(temp_vec, 3, s3);
+  FWriteV32(dst, temp_vec);
+  return memory;
+}
+
+template <typename D, typename S1>
+DEF_SEM(MOVSLDUP, D dst, S1 src) {
+  // Move low singles and duplicate: dst = {src[0], src[0], src[2], src[2]}.
+  auto src_vec = FReadV32(src);
+  auto s0 = FExtractV32(src_vec, 0);
+  auto s2 = FExtractV32(src_vec, 2);
+  float32v4_t temp_vec = {};
+  temp_vec = FInsertV32(temp_vec, 0, s0);
+  temp_vec = FInsertV32(temp_vec, 1, s0);
+  temp_vec = FInsertV32(temp_vec, 2, s2);
+  temp_vec = FInsertV32(temp_vec, 3, s2);
+  FWriteV32(dst, temp_vec);
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(MOVSHDUP_XMMps_MEMps) = MOVSHDUP<V128W, MV128>;
+DEF_ISEL(MOVSHDUP_XMMps_XMMps) = MOVSHDUP<V128W, V128>;
+DEF_ISEL(MOVSHDUP_XMMdq_MEMdq) = MOVSHDUP<V128W, MV128>;
+DEF_ISEL(MOVSHDUP_XMMdq_XMMdq) = MOVSHDUP<V128W, V128>;
+DEF_ISEL(MOVSLDUP_XMMps_MEMps) = MOVSLDUP<V128W, MV128>;
+DEF_ISEL(MOVSLDUP_XMMps_XMMps) = MOVSLDUP<V128W, V128>;
+DEF_ISEL(MOVSLDUP_XMMdq_MEMdq) = MOVSLDUP<V128W, MV128>;
+DEF_ISEL(MOVSLDUP_XMMdq_XMMdq) = MOVSLDUP<V128W, V128>;
 /*
 2320 VMOVDDUP VMOVDDUP_YMMqq_MEMqq DATAXFER AVX AVX ATTRIBUTES:
 2321 VMOVDDUP VMOVDDUP_YMMqq_YMMqq DATAXFER AVX AVX ATTRIBUTES:
@@ -1798,6 +1914,191 @@ DEF_ISEL(SQRTSD_XMMsd_MEMsd) = SQRTSD<V128W, MV64>;
 DEF_ISEL(SQRTSD_XMMsd_XMMsd) = SQRTSD<V128W, V128>;
 IF_AVX(DEF_ISEL(VSQRTSD_XMMdq_XMMdq_MEMq) = VSQRTSD<VV128W, V128, MV64>;)
 IF_AVX(DEF_ISEL(VSQRTSD_XMMdq_XMMdq_XMMq) = VSQRTSD<VV128W, V128, V128>;)
+
+namespace {
+
+// WEB-LIFT FIX (2026-06-24): packed SQRTPS/SQRTPD + reciprocal RCPPS/RSQRTPS were
+// MISSING (only scalar SQRTSS/SQRTSD/RSQRTSS existed). The layout solver's geometry
+// math auto-vectorizes these. Loop the scalar helpers over each lane. RCP/RSQRT use
+// the EXACT reciprocal as the approximation (a Newton-Raphson refine step, if the
+// compiler emits one, is a no-op on the exact value, so this stays correct).
+template <typename D, typename S1>
+DEF_SEM(SQRTPS, D dst, S1 src1) {
+  auto src_vec = FReadV32(src1);
+  auto vec_count = NumVectorElems(src_vec);
+  _Pragma("unroll") for (std::size_t i = 0; i < vec_count; i++) {
+    src_vec = FInsertV32(src_vec, i, SquareRoot32(memory, state, FExtractV32(src_vec, i)));
+  }
+  FWriteV32(dst, src_vec);
+  return memory;
+}
+
+template <typename D, typename S1>
+DEF_SEM(SQRTPD, D dst, S1 src1) {
+  auto src_vec = FReadV64(src1);
+  auto vec_count = NumVectorElems(src_vec);
+  _Pragma("unroll") for (std::size_t i = 0; i < vec_count; i++) {
+    src_vec = FInsertV64(src_vec, i, SquareRoot64(memory, state, FExtractV64(src_vec, i)));
+  }
+  FWriteV64(dst, src_vec);
+  return memory;
+}
+
+template <typename D, typename S1>
+DEF_SEM(RCPPS, D dst, S1 src1) {
+  auto src_vec = FReadV32(src1);
+  auto vec_count = NumVectorElems(src_vec);
+  _Pragma("unroll") for (std::size_t i = 0; i < vec_count; i++) {
+    src_vec = FInsertV32(src_vec, i, FDiv(1.0f, FExtractV32(src_vec, i)));
+  }
+  FWriteV32(dst, src_vec);
+  return memory;
+}
+
+template <typename D, typename S1>
+DEF_SEM(RSQRTPS, D dst, S1 src1) {
+  auto src_vec = FReadV32(src1);
+  auto vec_count = NumVectorElems(src_vec);
+  _Pragma("unroll") for (std::size_t i = 0; i < vec_count; i++) {
+    src_vec = FInsertV32(src_vec, i,
+                         FDiv(1.0f, SquareRoot32(memory, state, FExtractV32(src_vec, i))));
+  }
+  FWriteV32(dst, src_vec);
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(SQRTPS_XMMps_MEMps) = SQRTPS<V128W, MV128>;
+DEF_ISEL(SQRTPS_XMMps_XMMps) = SQRTPS<V128W, V128>;
+DEF_ISEL(SQRTPD_XMMpd_MEMpd) = SQRTPD<V128W, MV128>;
+DEF_ISEL(SQRTPD_XMMpd_XMMpd) = SQRTPD<V128W, V128>;
+DEF_ISEL(RCPPS_XMMps_MEMps) = RCPPS<V128W, MV128>;
+DEF_ISEL(RCPPS_XMMps_XMMps) = RCPPS<V128W, V128>;
+DEF_ISEL(RSQRTPS_XMMps_MEMps) = RSQRTPS<V128W, MV128>;
+DEF_ISEL(RSQRTPS_XMMps_XMMps) = RSQRTPS<V128W, V128>;
+
+namespace {
+
+// WEB-LIFT FIX (2026-06-25): SSE4.1 ROUNDPS / ROUNDPD / ROUNDSS / ROUNDSD were
+// COMPLETELY MISSING. The layout solver calls _mm_ceil_ps / _mm_floor_ps EXPLICITLY
+// (SSE4.1 intrinsics) to pixel-snap solved coordinates -> they lifted to
+// HandleUnsupported -> __remill_error -> the fn bailed MID-SOLVE -> the lifted layout
+// solve HUNG (hydrate [2c] ok, but never reached [2d]). Round-control imm bits:
+// [2]=use-MXCSR (round-to-nearest here), [1:0]=mode (0=nearest,1=floor,2=ceil,
+// 3=trunc), [3]=suppress-exceptions (ignored). Use clang __builtin_* rounders.
+template <typename D, typename S1>
+DEF_SEM(ROUNDPS, D dst, S1 src, I8 imm_byte) {
+  auto src_vec = FReadV32(src);
+  auto imm = Read(imm_byte);
+  auto vec_count = NumVectorElems(src_vec);
+  _Pragma("unroll") for (std::size_t i = 0; i < vec_count; i++) {
+    auto v = FExtractV32(src_vec, i);
+    float32_t r;
+    if (UAnd8(imm, 0x4_u8) == 0x4_u8) {
+      r = __builtin_nearbyintf(v);
+    } else if (UAnd8(imm, 0x3_u8) == 0x1_u8) {
+      r = __builtin_floorf(v);
+    } else if (UAnd8(imm, 0x3_u8) == 0x2_u8) {
+      r = __builtin_ceilf(v);
+    } else if (UAnd8(imm, 0x3_u8) == 0x3_u8) {
+      r = __builtin_truncf(v);
+    } else {
+      r = __builtin_nearbyintf(v);
+    }
+    src_vec = FInsertV32(src_vec, i, r);
+  }
+  FWriteV32(dst, src_vec);
+  return memory;
+}
+
+template <typename D, typename S1>
+DEF_SEM(ROUNDPD, D dst, S1 src, I8 imm_byte) {
+  auto src_vec = FReadV64(src);
+  auto imm = Read(imm_byte);
+  auto vec_count = NumVectorElems(src_vec);
+  _Pragma("unroll") for (std::size_t i = 0; i < vec_count; i++) {
+    auto v = FExtractV64(src_vec, i);
+    float64_t r;
+    if (UAnd8(imm, 0x4_u8) == 0x4_u8) {
+      r = __builtin_nearbyint(v);
+    } else if (UAnd8(imm, 0x3_u8) == 0x1_u8) {
+      r = __builtin_floor(v);
+    } else if (UAnd8(imm, 0x3_u8) == 0x2_u8) {
+      r = __builtin_ceil(v);
+    } else if (UAnd8(imm, 0x3_u8) == 0x3_u8) {
+      r = __builtin_trunc(v);
+    } else {
+      r = __builtin_nearbyint(v);
+    }
+    src_vec = FInsertV64(src_vec, i, r);
+  }
+  FWriteV64(dst, src_vec);
+  return memory;
+}
+
+template <typename D, typename S1>
+DEF_SEM(ROUNDSS, D dst, S1 src, I8 imm_byte) {
+  auto imm = Read(imm_byte);
+  auto v = FExtractV32(FReadV32(src), 0);
+  float32_t r;
+  if (UAnd8(imm, 0x4_u8) == 0x4_u8) {
+    r = __builtin_nearbyintf(v);
+  } else if (UAnd8(imm, 0x3_u8) == 0x1_u8) {
+    r = __builtin_floorf(v);
+  } else if (UAnd8(imm, 0x3_u8) == 0x2_u8) {
+    r = __builtin_ceilf(v);
+  } else if (UAnd8(imm, 0x3_u8) == 0x3_u8) {
+    r = __builtin_truncf(v);
+  } else {
+    r = __builtin_nearbyintf(v);
+  }
+  auto temp_vec = FReadV32(dst);
+  temp_vec = FInsertV32(temp_vec, 0, r);
+  FWriteV32(dst, temp_vec);
+  return memory;
+}
+
+template <typename D, typename S1>
+DEF_SEM(ROUNDSD, D dst, S1 src, I8 imm_byte) {
+  auto imm = Read(imm_byte);
+  auto v = FExtractV64(FReadV64(src), 0);
+  float64_t r;
+  if (UAnd8(imm, 0x4_u8) == 0x4_u8) {
+    r = __builtin_nearbyint(v);
+  } else if (UAnd8(imm, 0x3_u8) == 0x1_u8) {
+    r = __builtin_floor(v);
+  } else if (UAnd8(imm, 0x3_u8) == 0x2_u8) {
+    r = __builtin_ceil(v);
+  } else if (UAnd8(imm, 0x3_u8) == 0x3_u8) {
+    r = __builtin_trunc(v);
+  } else {
+    r = __builtin_nearbyint(v);
+  }
+  auto temp_vec = FReadV64(dst);
+  temp_vec = FInsertV64(temp_vec, 0, r);
+  FWriteV64(dst, temp_vec);
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(ROUNDPS_XMMdq_XMMdq_IMMb) = ROUNDPS<V128W, V128>;
+DEF_ISEL(ROUNDPS_XMMdq_MEMdq_IMMb) = ROUNDPS<V128W, MV128>;
+DEF_ISEL(ROUNDPD_XMMdq_XMMdq_IMMb) = ROUNDPD<V128W, V128>;
+DEF_ISEL(ROUNDPD_XMMdq_MEMdq_IMMb) = ROUNDPD<V128W, MV128>;
+DEF_ISEL(ROUNDSS_XMMd_XMMd_IMMb) = ROUNDSS<V128W, V128>;
+DEF_ISEL(ROUNDSS_XMMd_MEMd_IMMb) = ROUNDSS<V128W, MV32>;
+DEF_ISEL(ROUNDSD_XMMq_XMMq_IMMb) = ROUNDSD<V128W, V128>;
+DEF_ISEL(ROUNDSD_XMMq_MEMq_IMMb) = ROUNDSD<V128W, MV64>;
+// WEB-LIFT FIX (2026-06-25): XED decodes `roundps xmm,xmm,imm` as the _XMMps_ iform,
+// NOT _XMMdq_ — the _XMMdq_ ISELs above didn't match, so _mm_ceil_ps/_mm_floor_ps
+// STAYED HandleUnsupported (still 4 unsupported, still hung). Add the _XMMps_/_XMMpd_
+// iform variants too (both are valid XED iforms) → guaranteed coverage.
+DEF_ISEL(ROUNDPS_XMMps_XMMps_IMMb) = ROUNDPS<V128W, V128>;
+DEF_ISEL(ROUNDPS_XMMps_MEMps_IMMb) = ROUNDPS<V128W, MV128>;
+DEF_ISEL(ROUNDPD_XMMpd_XMMpd_IMMb) = ROUNDPD<V128W, V128>;
+DEF_ISEL(ROUNDPD_XMMpd_MEMpd_IMMb) = ROUNDPD<V128W, MV128>;
 /*
 4295 VSQRTSD VSQRTSD_XMMf64_MASKmskw_XMMf64_XMMf64_AVX512 AVX512 AVX512EVEX AVX512F_SCALAR ATTRIBUTES: MASKOP_EVEX MXCSR SIMD_SCALAR
 4296 VSQRTSD VSQRTSD_XMMf64_MASKmskw_XMMf64_XMMf64_AVX512 AVX512 AVX512EVEX AVX512F_SCALAR ATTRIBUTES: MASKOP_EVEX MXCSR SIMD_SCALAR

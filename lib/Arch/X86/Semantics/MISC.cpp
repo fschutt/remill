@@ -153,7 +153,20 @@ DEF_SEM(DoXLAT) {
 }
 
 DEF_SEM(DoCPUID) {
-  return __remill_sync_hyper_call(state, memory, SyncHyperCall::kX86CPUID);
+  // WEB-LIFT FIX (2026-06-24): emulate CPUID INLINE instead of a sync-hyper-call. The TraceLifter
+  // emits `__remill_error` + `ret` right after the CPUID sync-hyper-call (it cannot continue past
+  // it), so any runtime `is_x86_feature_detected!()` CPUID inside a lifted function (the hashbrown
+  // SwissTable insert / an inlined memcpy / the allocator) makes that function BAIL — which is why
+  // every HashMap traps/hangs in the wasm backend while BTreeMaps/Vecs (no SIMD/CPUID) work.
+  // Report NO optional features (all-zero, so max standard leaf = 0): `is_x86_feature_detected!`
+  // for AVX/AVX2/SSE4/POPCNT/... is FALSE → the scalar / SSE2-baseline fallbacks (which lift
+  // cleanly), and CONTINUE. SSE2 is the x86_64 compile-time baseline (`cfg!(target_feature)`, NOT
+  // CPUID-gated), so reporting no CPUID features does not disable it.
+  Write(REG_EAX, 0u);
+  Write(REG_EBX, 0u);
+  Write(REG_ECX, 0u);
+  Write(REG_EDX, 0u);
+  return memory;
 }
 }  // namespace
 

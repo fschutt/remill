@@ -1887,6 +1887,50 @@ IF_AVX(DEF_ISEL(VPMOVMSKB_GPR32d_YMMqq) = PMOVMSKB<R32W, V256>;)
 
 namespace {
 
+// WEB-LIFT FIX (2026-06-24): MOVMSKPS / MOVMSKPD (extract packed FP sign bits to
+// a GPR) were COMPLETELY MISSING from remill (no DEF_SEM/DEF_ISEL — only the
+// integer PMOVMSKB existed). The Rust layout solver uses the `psllq $63,xmm;
+// movmskpd xmm,eax` idiom (branchless float sign test / select) on its MAIN path
+// (solver3::fc::layout_bfc / layout_ifc) -> they lifted to HandleUnsupported ->
+// __remill_error -> the lifted layout solve bailed. Mirror PMOVMSKB but extract
+// the MSB of each 32-bit (ps) / 64-bit (pd) lane.
+template <typename D, typename S>
+DEF_SEM(MOVMSKPS, D dst, S src2) {
+  auto src_vec = UReadV32(src2);
+  uint32_t r32 = 0U;
+  auto vec_count = NumVectorElems(src_vec);
+  _Pragma("unroll") for (size_t i = vec_count; i-- > 0;) {
+    auto v1 = UExtractV32(src_vec, i);
+    r32 = UOr(UShl(r32, 1_u32), static_cast<uint32_t>(UShr(v1, 31_u32)));
+  }
+  WriteZExt(dst, r32);
+  return memory;
+}
+
+template <typename D, typename S>
+DEF_SEM(MOVMSKPD, D dst, S src2) {
+  auto src_vec = UReadV64(src2);
+  uint32_t r32 = 0U;
+  auto vec_count = NumVectorElems(src_vec);
+  _Pragma("unroll") for (size_t i = vec_count; i-- > 0;) {
+    auto v1 = UExtractV64(src_vec, i);
+    r32 = UOr(UShl(r32, 1_u32), static_cast<uint32_t>(UShr(v1, 63_u64)));
+  }
+  WriteZExt(dst, r32);
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(MOVMSKPS_GPR32_XMMps) = MOVMSKPS<R32W, V128>;
+DEF_ISEL(MOVMSKPD_GPR32_XMMpd) = MOVMSKPD<R32W, V128>;
+DEF_ISEL(VMOVMSKPS_GPR32d_XMMdq) = MOVMSKPS<R32W, V128>;
+DEF_ISEL(VMOVMSKPD_GPR32d_XMMdq) = MOVMSKPD<R32W, V128>;
+IF_AVX(DEF_ISEL(VMOVMSKPS_GPR32d_YMMqq) = MOVMSKPS<R32W, V256>;)
+IF_AVX(DEF_ISEL(VMOVMSKPD_GPR32d_YMMqq) = MOVMSKPD<R32W, V256>;)
+
+namespace {
+
 template <typename D, typename S1, typename S2>
 DEF_SEM(PINSRW, D dst, S1 src1, S2 src2, I8 src3) {
   auto dst_vec = UReadV16(src1);
