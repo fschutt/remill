@@ -68,7 +68,15 @@ DEF_SEM(MOVD, D dst, S src) {
 
 template <typename D, typename S>
 DEF_SEM(MOVxPS, D dst, S src) {
-  FWriteV32(dst, FReadV32(src));
+  // [AZ-WEBLIFT FIX 2026-06-26] MOVAPS/MOVUPS is a BIT COPY, not float arithmetic.
+  // The original `FWriteV32(FReadV32)` types it as <4 x float>, which the wasm32
+  // backend (no native v128) legalizes to 4 scalar f32 — splitting each i64 half
+  // of a Rust fat-pointer {ptr,len} into two f32 pieces. Register-pressure-
+  // dependent local-coalescing then corrupts one f32 → garbage Vec/slice len
+  // (the class-B multi-word-drop OOB in solveLayoutReal/layout_document). A
+  // bit-preserving <2 x i64> copy keeps each i64 half atomic (native wasm i64),
+  // size-generic for XMM(128)/YMM(256), and is float-canonicalization-free.
+  UWriteV64(dst, UReadV64(src));
   return memory;
 }
 
