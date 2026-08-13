@@ -58,7 +58,7 @@
     \
 SYMBOL(FUNC_NAME(instr_name, num_args)): ; \
     \
-    .section "__x86_test_table", "a" ; \
+    .section "__x86_test_table", "aw" ; \
     .balign 128 ; \
     1: \
     .quad 3f ; \
@@ -84,7 +84,7 @@ SYMBOL(FUNC_NAME(instr_name, num_args)): ; \
 # define TEST_END \
     6: \
     .cfi_endproc ; \
-    .section "__x86_test_table", "a" ; \
+    .section "__x86_test_table", "aw" ; \
     .quad 0 ; \
     .text ; \
     ud2 ;
@@ -94,7 +94,7 @@ SYMBOL(FUNC_NAME(instr_name, num_args)): ; \
     6: \
     jmp SYMBOL(__x86_save_state_after) ; \
     .cfi_endproc ; \
-    .section "__x86_test_table", "a" ; \
+    .section "__x86_test_table", "aw" ; \
     .quad 0 ; \
     .text ; \
     ud2 ;
@@ -109,7 +109,7 @@ SYMBOL(FUNC_NAME(instr_name, num_args)): ; \
 #define OF | (1 << 11)
 
 #define TEST_IGNORE_FLAGS(...) \
-    .section "__x86_test_table", "a" ; \
+    .section "__x86_test_table", "aw" ; \
     .quad 0 __VA_ARGS__ ; \
     .text ;
 
@@ -317,7 +317,7 @@ SYMBOL(__x86_save_state_after):
 
     /* Create a symbol that represents the start of the test information
      * table. */
-    .section "__x86_test_table", "a"
+    .section "__x86_test_table", "aw"
     .balign 128
     .globl SYMBOL(__x86_test_table_begin)
 SYMBOL(__x86_test_table_begin):
@@ -327,7 +327,6 @@ SYMBOL(__x86_test_table_begin):
 
 #include "tests/X86/ABI.S"
 #include "tests/X86/MMX/INPUTS.S"
-
 
 /* Change to `0` and put new `#include`s above when making new tests to speed
  * up compile and test times. */
@@ -349,6 +348,7 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/DATAXFER/MOVLPD.S"
 #include "tests/X86/DATAXFER/MOVLPS.S"
 #include "tests/X86/DATAXFER/MOVLHPS.S"
+#include "tests/X86/DATAXFER/MOVMSKPS.S"
 #include "tests/X86/DATAXFER/MOVQ.S"
 #include "tests/X86/DATAXFER/MOVSD.S"
 #include "tests/X86/DATAXFER/MOVSS.S"
@@ -358,12 +358,14 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/DATAXFER/MOVZX.S"
 #include "tests/X86/DATAXFER/XCHG.S"
 #include "tests/X86/DATAXFER/KMOVW.S"
+#include "tests/X86/DATAXFER/LDDQU.S"
 
 /* Bring in the rest of the semantic tests. */
 
 #include "tests/X86/AVX/VINSERTF128.S"
 #include "tests/X86/AVX/VZEROUPPER.S"
 #include "tests/X86/AVX/VPBROADCASTB.S"
+#include "tests/X86/AVX/VMASKMOV.S"
 
 #include "tests/X86/BINARY/ADC.S"
 #include "tests/X86/BINARY/ADD.S"
@@ -398,17 +400,26 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/BITBYTE/BSWAP.S"
 #include "tests/X86/BITBYTE/BT.S"
 #include "tests/X86/BITBYTE/BTC.S"
+#include "tests/X86/BITBYTE/BEXTR.S"
 #include "tests/X86/BITBYTE/BTR.S"
 #include "tests/X86/BITBYTE/BTS.S"
+#include "tests/X86/BITBYTE/BZHI.S"
+#include "tests/X86/BITBYTE/CRC32.S"
 #include "tests/X86/BITBYTE/LZCNT.S"
+#include "tests/X86/BITBYTE/PDEP.S"
+#include "tests/X86/BITBYTE/PEXT.S"
+#include "tests/X86/BITBYTE/POPCNT.S"
 #include "tests/X86/BITBYTE/SETcc.S"
+#include "tests/X86/BITBYTE/SETE.S"
 #include "tests/X86/BITBYTE/TZCNT.S"
 
 #include "tests/X86/CMOV/CMOVB.S"
 #include "tests/X86/CMOV/CMOVBE.S"
+#include "tests/X86/CMOV/CMOVE.S"
 #include "tests/X86/CMOV/CMOVL.S"
 #include "tests/X86/CMOV/CMOVLE.S"
 #include "tests/X86/CMOV/CMOVNB.S"
+#include "tests/X86/CMOV/CMOVNE.S"
 #include "tests/X86/CMOV/CMOVNBE.S"
 #include "tests/X86/CMOV/CMOVNL.S"
 #include "tests/X86/CMOV/CMOVNLE.S"
@@ -452,15 +463,19 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/DECIMAL/DAA.S"
 
 #include "tests/X86/LOGICAL/AND.S"
+#include "tests/X86/LOGICAL/ANDN.S"
 #include "tests/X86/LOGICAL/NOT.S"
 #include "tests/X86/LOGICAL/OR.S"
 #include "tests/X86/LOGICAL/TEST.S"
 #include "tests/X86/LOGICAL/XOR.S"
 
+#include "tests/X86/INTERRUPT/INT3.S"
+
 #include "tests/X86/MISC/CPUID.S"
 #include "tests/X86/MISC/ENTER.S"
 #include "tests/X86/MISC/LEA.S"
 #include "tests/X86/MISC/LEAVE.S"
+#include "tests/X86/MISC/NOP.S"
 #include "tests/X86/MISC/XLAT.S"
 
 #include "tests/X86/MMX/MISC.S"
@@ -500,12 +515,15 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/SHIFT/SAR.S"
 #include "tests/X86/SHIFT/SHL.S"
 #include "tests/X86/SHIFT/SHLD.S"
+#include "tests/X86/SHIFT/SHLX.S"
 #include "tests/X86/SHIFT/SHR.S"
 #include "tests/X86/SHIFT/SHRD.S"
 
+#include "tests/X86/SSE/ADDSUB.S"
 #include "tests/X86/SSE/CMPSS.S"
 #include "tests/X86/SSE/COMISD.S"
 #include "tests/X86/SSE/COMISS.S"
+#include "tests/X86/SSE/HADD.S"
 #include "tests/X86/SSE/PACKUSWB.S"
 #include "tests/X86/SSE/PCMPISTRI.S"
 #include "tests/X86/SSE/PSHUFD.S"
@@ -526,11 +544,15 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/SSE/UNPCKHPD.S"
 #include "tests/X86/SSE/UNPCKHPS.S"
 #include "tests/X86/SSE/MOVDDUP.S"
+#include "tests/X86/SSE/MOVSHDUP.S"
+#include "tests/X86/SSE/MOVSLDUP.S"
 #include "tests/X86/SSE/SQRTSS.S"
 #include "tests/X86/SSE/SQRTSD.S"
 #include "tests/X86/SSE/MXCSR.S"
 #include "tests/X86/SSE/SHUFPS.S"
 #include "tests/X86/SSE/SHUFPD.S"
+#include "tests/X86/SSE/PMOVSX.S"
+#include "tests/X86/SSE/PMOVZX.S"
 
 #include "tests/X86/STRINGOP/CMPS.S"
 #include "tests/X86/STRINGOP/LODS.S"
@@ -556,9 +578,21 @@ SYMBOL(__x86_test_table_begin):
 #include "tests/X86/FMA/VFMADDSD.S"
 #include "tests/X86/FMA/VFMSUBSD.S"
 
+#include "tests/X86/BRANCH/CALL.S"
+#include "tests/X86/BRANCH/JAE.S"
+#include "tests/X86/BRANCH/JE.S"
+#include "tests/X86/BRANCH/JMP.S"
+#include "tests/X86/BRANCH/JNE.S"
+#include "tests/X86/BRANCH/RET.S"
+
+#include "tests/X86/SYSTEM/LAR.S"
+#include "tests/X86/SYSTEM/RDTSC.S"
+#include "tests/X86/SYSTEM/VERR.S"
+#include "tests/X86/SYSTEM/XGETBV.S"
+
 #endif
 
     /* Create a symbol that represents the end of the test information table. */
-    .section "__x86_test_table", "a"
+    .section "__x86_test_table", "aw"
     .globl SYMBOL(__x86_test_table_end)
 SYMBOL(__x86_test_table_end):

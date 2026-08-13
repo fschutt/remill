@@ -10,7 +10,7 @@ Remill focuses on accurately lifting instructions. It is meant to be used as a l
 
 ## Build Status
 
-[![Build Status](https://img.shields.io/github/workflow/status/lifting-bits/remill/CI/master)](https://github.com/lifting-bits/remill/actions?query=workflow%3ACI)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/lifting-bits/remill/.github/workflows/build.yml)](https://github.com/lifting-bits/remill/actions/workflows/build.yml)
 
 ## Documentation
 
@@ -21,6 +21,25 @@ To understand how Remill works you can take a look at the following resources:
  - [The design and architecture of Remill](docs/DESIGN.md)
 
 If you would like to contribute you can check out: [How to contribute](docs/CONTRIBUTING.md)
+
+### API Documentation
+
+Generate detailed API documentation using Doxygen:
+
+```bash
+# Install Doxygen (macOS)
+brew install doxygen graphviz
+
+# Install Doxygen (Ubuntu/Debian)
+sudo apt-get install doxygen graphviz
+
+# Generate documentation
+doxygen
+
+# Open docs/doxygen/html/index.html in your browser
+```
+
+See [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) for more details on documentation style and contributing.
 
 ## Getting Help
 
@@ -46,7 +65,7 @@ Remill uses the following dependencies:
 | [Google Test](https://github.com/google/googletest) | v1.17.0 |
 | [LLVM](http://llvm.org/) | 15+ |
 | [Clang](http://clang.llvm.org/) | 15+ |
-| [Intel XED](https://github.com/intelxed/xed) | v2022.04.17 |
+| [Intel XED](https://github.com/intelxed/xed) | v2025.06.08 |
 | [Python](https://www.python.org/) | 3+ |
 
 ## Getting and Building the Code
@@ -68,21 +87,21 @@ cmake -G Ninja -S dependencies -B dependencies/build
 cmake --build dependencies/build
 
 # Step 2: Build remill
-cmake -G Ninja -B build -DCMAKE_PREFIX_PATH=$(pwd)/dependencies/install -DCMAKE_BUILD_TYPE=Release
+cmake -G Ninja -B build -DCMAKE_PREFIX_PATH:PATH=$(pwd)/dependencies/install -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-### Windows (requires clang or clang-cl)
+### Windows (requires clang-cl)
 
 **Note**: This requires running from a Visual Studio developer prompt.
 
 ```bash
 # Step 1: Build dependencies
-cmake -G Ninja -S dependencies -B dependencies/build -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+cmake -G Ninja -S dependencies -B dependencies/build -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
 cmake --build dependencies/build
 
 # Step 2: Build remill
-cmake -G Ninja -B build -DCMAKE_PREFIX_PATH=%CD%/dependencies/install -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
+cmake -G Ninja -B build -DCMAKE_PREFIX_PATH:PATH=%CD%/dependencies/install -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
@@ -94,11 +113,11 @@ brew install llvm@17
 LLVM_PREFIX=$(brew --prefix llvm@17)
 
 # Build dependencies with external LLVM
-cmake -G Ninja -S dependencies -B dependencies/build -DUSE_EXTERNAL_LLVM=ON "-DCMAKE_PREFIX_PATH=$LLVM_PREFIX"
+cmake -G Ninja -S dependencies -B dependencies/build -DUSE_EXTERNAL_LLVM=ON "-DCMAKE_PREFIX_PATH:PATH=$LLVM_PREFIX"
 cmake --build dependencies/build
 
 # Build remill
-cmake -G Ninja -B build "-DCMAKE_PREFIX_PATH=$LLVM_PREFIX;$(pwd)/dependencies/install" -DCMAKE_BUILD_TYPE=Release
+cmake -G Ninja -B build "-DCMAKE_PREFIX_PATH:PATH=$(pwd)/dependencies/install" -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
@@ -110,6 +129,6 @@ cmake -G Ninja -S dependencies -B dependencies/build -DUSE_EXTERNAL_LLVM=ON
 cmake --build dependencies/build
 
 # Build remill
-cmake -G Ninja -B build "-DCMAKE_PREFIX_PATH=$LLVM_PREFIX;$(pwd)/dependencies/install" -DCMAKE_BUILD_TYPE=Release
+cmake -G Ninja -B build "-DCMAKE_PREFIX_PATH:PATH=$(pwd)/dependencies/install" -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```

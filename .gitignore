@@ -17,6 +17,7 @@ Makefile
 
 CMakeLists.txt.user
 .vscode
+.vs
 .idea
 .DS_Store
 .cproject
@@ -101,3 +102,9 @@ obj-intel64/*
 
 #VERSION files from CI
 VERSION
+
+# Doxygen generated documentation
+docs/doxygen/
+
+# Nix
+result

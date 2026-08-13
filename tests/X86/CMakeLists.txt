@@ -46,8 +46,10 @@ function(COMPILE_X86_TESTS name address_size has_avx has_avx512)
 
   add_custom_command(
     OUTPUT tests_${name}.bc
-    COMMAND lift-${name}-tests --arch ${name} --bc_out tests_${name}.bc
-    DEPENDS semantics
+    COMMAND lift-${name}-tests --arch ${name}
+            --sem_dir ${CMAKE_BINARY_DIR}/lib/Arch/X86/Runtime
+            --bc_out tests_${name}.bc
+    DEPENDS semantics lift-${name}-tests ${name}
   )
 
   add_custom_command(

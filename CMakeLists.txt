@@ -47,10 +47,8 @@ else()
     aarch64info aarch64desc aarch64codegen aarch64asmparser
     armcodegen armasmparser
     interpreter mcjit
-    nvptxdesc
     x86info x86codegen x86asmparser
-    sparccodegen sparcasmparser
-    webassemblydesc)
+    sparccodegen sparcasmparser)
 endif()
 message(STATUS "LLVM Libraries: ${llvm_libs}")
 
@@ -90,29 +88,35 @@ find_package(glog CONFIG REQUIRED)
 set(GFLAGS_USE_TARGET_NAMESPACE ON)
 find_package(gflags CONFIG REQUIRED)
 
+option(REMILL_FETCH_SLEIGH "Fetch and build sleigh as part of remill" ON)
+
 # Sleigh
-file(GLOB sleigh_patches "${CMAKE_CURRENT_SOURCE_DIR}/patches/sleigh/*.patch")
-set(sleigh_ADDITIONAL_PATCHES "${sleigh_patches}" CACHE STRING "" FORCE)
-set(sleigh_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-set(sleigh_RELEASE_TYPE "HEAD" CACHE STRING "" FORCE)
-set(sleigh_BUILD_SUPPORT ON CACHE BOOL "" FORCE)
-set(sleigh_BUILD_SLEIGHSPECS ON CACHE BOOL "" FORCE)
+if(REMILL_FETCH_SLEIGH)
+  file(GLOB sleigh_patches "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/sleigh_patches/*.patch")
+  set(sleigh_ADDITIONAL_PATCHES "${sleigh_patches}" CACHE STRING "" FORCE)
+  set(sleigh_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+  set(sleigh_RELEASE_TYPE "HEAD" CACHE STRING "" FORCE)
+  set(sleigh_BUILD_SUPPORT ON CACHE BOOL "" FORCE)
+  set(sleigh_BUILD_SLEIGHSPECS ON CACHE BOOL "" FORCE)
 
-# Verbose fetch content updates
-set(FETCHCONTENT_QUIET OFF)
+  # Verbose fetch content updates
+  set(FETCHCONTENT_QUIET OFF)
 
-# This version of sleigh (HEAD) pins Ghidra somewhere between Ghidra v10.2.3 and v10.3
-# https://github.com/lifting-bits/sleigh/blob/7c6b742/src/setup-ghidra-source.cmake#L55-L66
-FetchContent_Declare(sleigh
-  GIT_REPOSITORY https://github.com/lifting-bits/sleigh.git
-  GIT_TAG 7c6b742
-)
-FetchContent_MakeAvailable(sleigh)
+  # This version of sleigh (HEAD) pins Ghidra somewhere between Ghidra v10.2.3 and v10.3
+  # https://github.com/lifting-bits/sleigh/blob/7c6b742/src/setup-ghidra-source.cmake#L55-L66
+  FetchContent_Declare(sleigh
+    GIT_REPOSITORY https://github.com/lifting-bits/sleigh.git
+    GIT_TAG 7c6b742
+  )
+  FetchContent_MakeAvailable(sleigh)
 
-# Get the Ghidra source directory from FetchContent's internal tracking
-FetchContent_GetProperties(GhidraSource)
-if(NOT ghidrasource_POPULATED)
-  message(FATAL_ERROR "Expected sleigh to populate GhidraSource")
+  # Get the Ghidra source directory from FetchContent's internal tracking
+  FetchContent_GetProperties(GhidraSource)
+  if(NOT ghidrasource_POPULATED)
+    message(FATAL_ERROR "Expected sleigh to populate GhidraSource")
+  endif()
+else()
+  find_package(sleigh CONFIG REQUIRED COMPONENTS Support Specs)
 endif()
 
 # For Linux builds, group LLVM libraries into a single group
@@ -149,7 +153,6 @@ target_include_directories(remill_settings INTERFACE
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND MSVC)
   # warnings and compiler settings
   target_compile_options(remill_settings INTERFACE
-    "$<$<CONFIG:Debug>:/MDd>$<$<CONFIG:Release>:/MD>"
     /nologo /W3 /EHsc /wd4141 /wd4146 /wd4180 /wd4244
     /wd4258 /wd4267 /wd4291 /wd4345 /wd4351 /wd4355 /wd4456
     /wd4457 /wd4458 /wd4459 /wd4503 /wd4624 /wd4722 /wd4800
@@ -222,22 +225,34 @@ target_compile_definitions(remill_settings INTERFACE
   "REMILL_BUILD_SEMANTICS_DIR_PPC64_32ADDR=\"${REMILL_BUILD_SEMANTICS_DIR_PPC64_32ADDR}\""
 )
 
-if(SLEIGH_EXECUTABLE)
-  set(sleigh_compiler "${SLEIGH_EXECUTABLE}")
+if(REMILL_FETCH_SLEIGH)
+  if(SLEIGH_EXECUTABLE)
+    set(sleigh_compiler "${SLEIGH_EXECUTABLE}")
+  else()
+    set(sleigh_compiler "$<TARGET_FILE:sleigh::sleigh>")
+  endif()
+
+  sleigh_compile(
+    TARGET ppc_e200_spec
+    COMPILER "${sleigh_compiler}"
+    SLASPEC "${ghidrasource_SOURCE_DIR}/Ghidra/Processors/PowerPC/data/languages/ppc_32_e200_be.slaspec"
+    LOG_FILE "${sleigh_BINARY_DIR}/sleighspecs/spec_build_logs/ppc_32_e200_be.sla.log"
+    OUT_FILE "${sleigh_BINARY_DIR}/specfiles/Ghidra/Processors/PowerPC/data/languages/ppc_32_e200_be.sla"
+  )
+
+  add_custom_target(sleigh_custom_specs)
+  add_dependencies(sleigh_custom_specs ppc_e200_spec)
+
+  if(REMILL_ENABLE_INSTALL_TARGET)
+    install(FILES "${sleigh_BINARY_DIR}/specfiles/Ghidra/Processors/PowerPC/data/languages/ppc_32_e200_be.sla"
+      DESTINATION "${CMAKE_INSTALL_DATADIR}/sleigh/specfiles/Ghidra/Processors/PowerPC/data/languages/")
+  endif()
 else()
-  set(sleigh_compiler "$<TARGET_FILE:sleigh::sleigh>")
+  if(NOT EXISTS "${sleigh_INSTALL_SPECDIR}/Ghidra/Processors/PowerPC/data/languages/ppc_32_e200_be.sla")
+    message(FATAL_ERROR "Installed sleigh spec not found: ${sleigh_INSTALL_SPECDIR}/Ghidra/Processors/PowerPC/data/languages/ppc_32_e200_be.sla")
+  endif()
+  add_custom_target(sleigh_custom_specs)
 endif()
-
-sleigh_compile(
-  TARGET ppc_e200_spec
-  COMPILER "${sleigh_compiler}"
-  SLASPEC "${ghidrasource_SOURCE_DIR}/Ghidra/Processors/PowerPC/data/languages/ppc_32_e200_be.slaspec"
-  LOG_FILE "${sleigh_BINARY_DIR}/sleighspecs/spec_build_logs/ppc_32_e200_be.sla.log"
-  OUT_FILE "${sleigh_BINARY_DIR}/specfiles/Ghidra/Processors/PowerPC/data/languages/ppc_32_e200_be.sla"
-)
-
-add_custom_target(sleigh_custom_specs)
-add_dependencies(sleigh_custom_specs ppc_e200_spec)
 
 target_link_libraries(remill_settings INTERFACE
   ${llvm_libs}
@@ -285,8 +300,10 @@ InstallExternalTarget("ext_llvmlink" "${LLVMLINK_PATH}" "BIN" "${INSTALLED_LLVML
 #
 add_custom_target(semantics)
 
-# shared JIT tools
-add_subdirectory(test_runner_lib)
+# shared JIT test support
+if(REMILL_ENABLE_TESTING)
+  add_subdirectory(test_runner_lib)
+endif()
 
 # tools
 add_subdirectory(bin)
@@ -297,8 +314,6 @@ if(REMILL_ENABLE_INSTALL_TARGET)
   install(TARGETS remill_settings
     EXPORT remillTargets
   )
-
-  install(FILES "${sleigh_BINARY_DIR}/specfiles/Ghidra/Processors/PowerPC/data/languages/ppc_32_e200_be.sla" DESTINATION "${CMAKE_INSTALL_DATADIR}/sleigh/specfiles/Ghidra/Processors/PowerPC/data/languages/")
 
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/remillConfig.cmake.in"
@@ -347,3 +362,9 @@ if(REMILL_ENABLE_TESTING)
     add_subdirectory(tests/AArch64)
   endif()
 endif()
+
+#
+# Documentation
+#
+
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/doxygen.cmake")

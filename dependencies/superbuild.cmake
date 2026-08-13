@@ -11,23 +11,46 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
 	message(FATAL_ERROR "In-tree builds are not supported. Run CMake from a separate directory: cmake -B build")
 endif()
 
-# Default to a Release config
-set(CMAKE_BUILD_TYPE "Release" CACHE STRING "")
 if(CMAKE_BUILD_TYPE STREQUAL "")
-    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+    message(FATAL_ERROR "CMAKE_BUILD_TYPE is not set")
 endif()
-
 message(STATUS "Configuration: ${CMAKE_BUILD_TYPE}")
 
 # Default to build/install (setting this variable is not recommended and might cause conflicts)
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     set(CMAKE_INSTALL_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/../install" CACHE PATH "Install prefix" FORCE)
 endif()
+cmake_path(ABSOLUTE_PATH CMAKE_INSTALL_PREFIX NORMALIZE)
+set(CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}" CACHE PATH "Install prefix" FORCE)
 message(STATUS "Install prefix: ${CMAKE_INSTALL_PREFIX}")
 
-# Save the host platform in the install prefix
-make_directory(${CMAKE_INSTALL_PREFIX})
-file(TOUCH ${CMAKE_INSTALL_PREFIX}/${CMAKE_SYSTEM}.build)
+# Verify build configuration hasn't changed
+set(BUILD_CONFIG_FILE "${CMAKE_INSTALL_PREFIX}/.build_config")
+string(JOIN "\n" CURRENT_BUILD_CONFIG
+    "CMAKE_SYSTEM=${CMAKE_SYSTEM}"
+    "CMAKE_SYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}"
+    "CMAKE_CXX_COMPILER_ID=${CMAKE_CXX_COMPILER_ID}"
+    "CMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+    "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
+)
+
+if(EXISTS "${BUILD_CONFIG_FILE}")
+    file(READ "${BUILD_CONFIG_FILE}" PREVIOUS_BUILD_CONFIG)
+    if(NOT PREVIOUS_BUILD_CONFIG STREQUAL CURRENT_BUILD_CONFIG)
+        message(FATAL_ERROR
+            "Build configuration changed!\n"
+            "[previous]\n${PREVIOUS_BUILD_CONFIG}\n"
+            "[current]\n${CURRENT_BUILD_CONFIG}\n"
+            "\n"
+            "Please delete the build and install directories, then reconfigure:\n"
+            "  cmake -E rm -rf \"${CMAKE_BINARY_DIR}\"\n"
+            "  cmake -E rm -rf \"${CMAKE_INSTALL_PREFIX}\"\n"
+        )
+    endif()
+else()
+    file(MAKE_DIRECTORY "${CMAKE_INSTALL_PREFIX}")
+    file(WRITE "${BUILD_CONFIG_FILE}" "${CURRENT_BUILD_CONFIG}")
+endif()
 
 # Git is necessary for submodules
 find_package(Git REQUIRED)
@@ -90,21 +113,41 @@ list(JOIN ADDITIONAL_FLAGS " " ADDITIONAL_FLAGS)
 
 # Default cache variables for all projects
 list(APPEND CMAKE_ARGS
-    "-DCMAKE_PREFIX_PATH:FILEPATH=${CMAKE_INSTALL_PREFIX};${CMAKE_PREFIX_PATH}"
-    "-DCMAKE_INSTALL_PREFIX:FILEPATH=${CMAKE_INSTALL_PREFIX}"
+    "-DCMAKE_PREFIX_PATH:PATH=${CMAKE_INSTALL_PREFIX};${CMAKE_PREFIX_PATH}"
+    "-DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_INSTALL_PREFIX}"
     "-DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}"
     "-DBUILD_SHARED_LIBS:STRING=${BUILD_SHARED_LIBS}"
     "-DCMAKE_C_COMPILER:FILEPATH=${CMAKE_C_COMPILER}"
     "-DCMAKE_CXX_COMPILER:FILEPATH=${CMAKE_CXX_COMPILER}"
     "-DCMAKE_C_FLAGS:STRING=${CMAKE_C_FLAGS} ${ADDITIONAL_FLAGS}"
     "-DCMAKE_CXX_FLAGS:STRING=${CMAKE_CXX_FLAGS} ${ADDITIONAL_FLAGS}"
+    "-DCMAKE_POSITION_INDEPENDENT_CODE:STRING=ON"
+    "-DCMAKE_ERROR_DEPRECATED:STRING=OFF"
+    "-DCMAKE_ERROR_DEVELOPER_WARNINGS:STRING=OFF"
+    "-DCMAKE_POLICY_DEFAULT_CMP0091:STRING=NEW" # Needed to make sure gflags respects CMAKE_MSVC_RUNTIME_LIBRARY as their minimum CMake version is older than 3.15.
 )
 
+# Only propagate the MSVC runtime selection if the parent project explicitly set
+# one. Passing an empty CMAKE_MSVC_RUNTIME_LIBRARY to external projects on
+# Windows suppresses the CRT selection and breaks clang's compiler checks.
+if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY
+   AND NOT CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "")
+    list(APPEND CMAKE_ARGS
+        "-DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=${CMAKE_MSVC_RUNTIME_LIBRARY}"
+    )
+endif()
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
+    list(APPEND CMAKE_ARGS
+        "-DCMAKE_POLICY_VERSION_MINIMUM:STRING=${CMAKE_MINIMUM_REQUIRED_VERSION}"
+    )
+endif()
+
 if(CMAKE_C_COMPILER_LAUNCHER)
-    list(APPEND CMAKE_ARGS "-DCMAKE_C_COMPILER_LAUNCHER:STRING=${CMAKE_C_COMPILER_LAUNCHER}")
+    list(APPEND CMAKE_ARGS "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=${CMAKE_C_COMPILER_LAUNCHER}")
 endif()
 if(CMAKE_CXX_COMPILER_LAUNCHER)
-    list(APPEND CMAKE_ARGS "-DCMAKE_CXX_COMPILER_LAUNCHER:STRING=${CMAKE_CXX_COMPILER_LAUNCHER}")
+    list(APPEND CMAKE_ARGS "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=${CMAKE_CXX_COMPILER_LAUNCHER}")
 endif()
 
 message(STATUS "Compiling all dependencies with the following CMake arguments:")

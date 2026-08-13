@@ -186,14 +186,14 @@ MAKE_RW_FP_MEMORY(64)
 MAKE_RW_FP_MEMORY(128)
 
 NEVER_INLINE Memory *__remill_read_memory_f80(Memory *, addr_t addr,
-                                              native_float80_t &out) {
-  out = AccessMemory<native_float80_t>(addr);
+                                              float80_t &out) {
+  out = AccessMemory<float80_t>(addr);
   return nullptr;
 }
 
 NEVER_INLINE Memory *__remill_write_memory_f80(Memory *, addr_t addr,
-                                               const native_float80_t &in) {
-  AccessMemory<native_float80_t>(addr) = in;
+                                               const float80_t &in) {
+  AccessMemory<float80_t>(addr) = in;
   return nullptr;
 }
 
@@ -441,20 +441,30 @@ Memory *__remill_write_io_port_32(Memory *, addr_t, uint32_t) {
   abort();
 }
 
-Memory *__remill_function_call(State &, addr_t, Memory *) {
-  abort();
+Memory *__remill_function_call(State &, addr_t, Memory *memory) {
+  return memory;
 }
 
-Memory *__remill_function_return(State &, addr_t, Memory *) {
-  abort();
+Memory *__remill_function_return(State &, addr_t, Memory *memory) {
+  return memory;
 }
 
-Memory *__remill_jump(State &, addr_t, Memory *) {
-  abort();
+Memory *__remill_jump(State &, addr_t, Memory *memory) {
+  return memory;
 }
 
-Memory *__remill_async_hyper_call(State &, addr_t, Memory *) {
-  abort();
+Memory *__remill_async_hyper_call(State &state, addr_t, Memory *memory) {
+  switch (state.hyper_call) {
+    case AsyncHyperCall::kX86Int1:
+    case AsyncHyperCall::kX86Int3:
+    case AsyncHyperCall::kX86IntO:
+    case AsyncHyperCall::kX86IntN:
+    case AsyncHyperCall::kX86Bound:
+      return memory;
+
+    default:
+      abort();
+  }
 }
 
 uint8_t __remill_undefined_8(void) {
@@ -1176,7 +1186,6 @@ static void RunWithFlags(const test::TestInfo *info, Flags flags,
           << "st:" << offsetof(State, st) << "\n"
           << "mmx:" << offsetof(State, mmx) << "\n"
           << "sw:" << offsetof(State, sw) << "\n"
-          << "xcr0:" << offsetof(State, xcr0) << "\n"
           << "x87:" << offsetof(State, x87) << "\n"
           << "seg_caches:" << offsetof(State, seg_caches) << "\n";
     }
@@ -1321,7 +1330,11 @@ static void RecoverFromError(int sig_num, siginfo_t *, void *context_) {
   siglongjmp(gJmpBuf, 0);
 }
 
-static void ConsumeTrap(int, siginfo_t *, void *) {}
+static void ConsumeTrap(int, siginfo_t *, void *) {
+  auto native_state = reinterpret_cast<State *>(&gNativeState);
+  native_state->hyper_call = AsyncHyperCall::kX86Int3;
+  native_state->hyper_call_vector = 3;
+}
 
 static void HandleUnsupportedInstruction(int, siginfo_t *, void *) {
   siglongjmp(gUnsupportedInstrBuf, 0);

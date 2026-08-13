@@ -1411,11 +1411,11 @@ DEF_SEM(MINPS, D dst, S1 src1, S2 src2) {
     if (__builtin_isunordered(v1, v2)) {
       min = v2;
 
-    // or if both floats are 0.0:
+      // or if both floats are 0.0:
     } else if ((v1 == 0.0) && (v2 == 0.0)) {
       min = v2;
 
-    // or if src2 is less than src1:
+      // or if src2 is less than src1:
     } else if (__builtin_isless(v2, v1)) {
       min = v2;
     }
@@ -1442,11 +1442,11 @@ DEF_SEM(MAXPS, D dst, S1 src1, S2 src2) {
     if (__builtin_isunordered(v1, v2)) {
       max = v2;
 
-    // or if both floats are 0.0:
+      // or if both floats are 0.0:
     } else if ((v1 == 0.0) && (v2 == 0.0)) {
       max = v2;
 
-    // or if src2 is greater than src1:
+      // or if src2 is greater than src1:
     } else if (__builtin_isgreater(v2, v1)) {
       max = v2;
     }
@@ -1666,83 +1666,47 @@ IF_AVX(DEF_ISEL(VUNPCKHPS_XMMdq_XMMdq_XMMdq) = UNPCKHPS<VV128W, V128, V128>;)
 
 namespace {
 
-template <typename D, typename S1>
-DEF_SEM(MOVDDUP, D dst, S1 src) {
+#define MAKE_MOVDDUP(num_src_elements) \
+  template <typename D, typename S1> \
+  DEF_SEM(MOVDDUP_##num_src_elements, D dst, S1 src) { \
+\
+    /* Treat src as a vector of QWORD (64-bit) floats, even if it's just one element:*/ \
+    auto src_vec = FReadV64(src); \
+    auto tmp_vec = FClearV64(FReadV64(dst)); \
+\
+    /* "Move and duplicate" QWORD src[63:0] into dest[63:0] and into dest[127:64]:*/ \
+    _Pragma("unroll") for (auto idx = 0u; idx < num_src_elements * 2; \
+                           idx += 2) { \
+      auto src_float = FExtractV64(src_vec, idx); \
+      tmp_vec = FInsertV64(tmp_vec, idx, src_float); \
+      tmp_vec = FInsertV64(tmp_vec, idx + 1, src_float); \
+    } \
+    /* SSE: Writes to XMM (dest[MAXVL-1:127] unmodified). AVX: Zero-extends XMM.*/ \
+    FWriteV64(dst, tmp_vec); \
+    return memory; \
+  }
 
-  // Treat src as a vector of QWORD (64-bit) floats, even if it's just one element:
-  auto src_vec = FReadV64(src);
+// for SSE and VEX.128
+MAKE_MOVDDUP(1)
+// for VEX.256
+MAKE_MOVDDUP(2)
 
-  // "Move and duplicate" QWORD src[63:0] into dest[63:0] and into dest[127:64]:
-  auto src_float = FExtractV64(src_vec, 0);
-
-  float64v2_t temp_vec =
-      {};  // length of src and dest may differ, so manually create.
-  temp_vec = FInsertV64(temp_vec, 0, src_float);
-  temp_vec = FInsertV64(temp_vec, 1, src_float);
-
-  // SSE: Writes to XMM (dest[MAXVL-1:127] unmodified). AVX: Zero-extends XMM.
-  FWriteV64(dst, temp_vec);
-  return memory;
-}
-
-}  // namespace
-
-DEF_ISEL(MOVDDUP_XMMdq_MEMq) = MOVDDUP<V128W, MV64>;
-DEF_ISEL(MOVDDUP_XMMdq_XMMq) = MOVDDUP<V128W, V128>;
-IF_AVX(DEF_ISEL(VMOVDDUP_XMMdq_MEMq) = MOVDDUP<VV128W, MV64>;)
-IF_AVX(DEF_ISEL(VMOVDDUP_XMMdq_XMMq) = MOVDDUP<VV128W, V128>;)
-
-namespace {
-
-// WEB-LIFT FIX (2026-06-24): MOVSHDUP / MOVSLDUP (SSE3 packed-single duplicate)
-// were COMPLETELY MISSING from remill (no DEF_SEM and no DEF_ISEL — only MOVDDUP
-// existed). The Rust auto-vectorizer emits them for horizontal float reductions
-// (e.g. `movshdup xmm,xmm; ucomiss` to extract the odd lanes) on the MAIN layout
-// path (azul_layout::solver3::layout_document) -> they lifted to HandleUnsupported
-// -> __remill_error -> the lifted fn bailed (the lifted layout solve hung).
-template <typename D, typename S1>
-DEF_SEM(MOVSHDUP, D dst, S1 src) {
-  // Move high singles and duplicate: dst = {src[1], src[1], src[3], src[3]}.
-  auto src_vec = FReadV32(src);
-  auto s1 = FExtractV32(src_vec, 1);
-  auto s3 = FExtractV32(src_vec, 3);
-  float32v4_t temp_vec = {};
-  temp_vec = FInsertV32(temp_vec, 0, s1);
-  temp_vec = FInsertV32(temp_vec, 1, s1);
-  temp_vec = FInsertV32(temp_vec, 2, s3);
-  temp_vec = FInsertV32(temp_vec, 3, s3);
-  FWriteV32(dst, temp_vec);
-  return memory;
-}
-
-template <typename D, typename S1>
-DEF_SEM(MOVSLDUP, D dst, S1 src) {
-  // Move low singles and duplicate: dst = {src[0], src[0], src[2], src[2]}.
-  auto src_vec = FReadV32(src);
-  auto s0 = FExtractV32(src_vec, 0);
-  auto s2 = FExtractV32(src_vec, 2);
-  float32v4_t temp_vec = {};
-  temp_vec = FInsertV32(temp_vec, 0, s0);
-  temp_vec = FInsertV32(temp_vec, 1, s0);
-  temp_vec = FInsertV32(temp_vec, 2, s2);
-  temp_vec = FInsertV32(temp_vec, 3, s2);
-  FWriteV32(dst, temp_vec);
-  return memory;
-}
+#undef MAKE_MOVDDUP
 
 }  // namespace
 
-DEF_ISEL(MOVSHDUP_XMMps_MEMps) = MOVSHDUP<V128W, MV128>;
-DEF_ISEL(MOVSHDUP_XMMps_XMMps) = MOVSHDUP<V128W, V128>;
-DEF_ISEL(MOVSHDUP_XMMdq_MEMdq) = MOVSHDUP<V128W, MV128>;
-DEF_ISEL(MOVSHDUP_XMMdq_XMMdq) = MOVSHDUP<V128W, V128>;
-DEF_ISEL(MOVSLDUP_XMMps_MEMps) = MOVSLDUP<V128W, MV128>;
-DEF_ISEL(MOVSLDUP_XMMps_XMMps) = MOVSLDUP<V128W, V128>;
-DEF_ISEL(MOVSLDUP_XMMdq_MEMdq) = MOVSLDUP<V128W, MV128>;
-DEF_ISEL(MOVSLDUP_XMMdq_XMMdq) = MOVSLDUP<V128W, V128>;
+// [MERGE 2026-08-13] Upstream trailofbits (170c4df) renamed MOVDDUP -> MOVDDUP_1
+// (MAKE_MOVDDUP macro, +MOVDDUP_2 for YMM) and added MOVSHDUP/MOVSLDUP via the
+// MAKE_MOVSxDUP macro (generic NumVectorElems loop → also covers AVX-256). That
+// supersedes our 2026-06-24 hardcoded-4-lane MOVSHDUP/MOVSLDUP + old-name MOVDDUP
+// ISELs, so we take upstream's here (its MOVSHDUP/MOVSLDUP ISELs live just below).
+DEF_ISEL(MOVDDUP_XMMdq_MEMq) = MOVDDUP_1<V128W, MV64>;
+DEF_ISEL(MOVDDUP_XMMdq_XMMq) = MOVDDUP_1<V128W, V128>;
+IF_AVX(DEF_ISEL(VMOVDDUP_XMMdq_MEMq) = MOVDDUP_1<VV128W, MV64>;)
+IF_AVX(DEF_ISEL(VMOVDDUP_XMMdq_XMMq) = MOVDDUP_1<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VMOVDDUP_YMMqq_MEMqq) = MOVDDUP_2<VV256W, MV128>;)
+IF_AVX(DEF_ISEL(VMOVDDUP_YMMqq_YMMqq) = MOVDDUP_2<VV256W, V256>;)
 /*
-2320 VMOVDDUP VMOVDDUP_YMMqq_MEMqq DATAXFER AVX AVX ATTRIBUTES:
-2321 VMOVDDUP VMOVDDUP_YMMqq_YMMqq DATAXFER AVX AVX ATTRIBUTES:
 4070 VMOVDDUP VMOVDDUP_ZMMf64_MASKmskw_ZMMf64_AVX512 DATAXFER AVX512EVEX AVX512F_512 ATTRIBUTES: MASKOP_EVEX
 4071 VMOVDDUP VMOVDDUP_ZMMf64_MASKmskw_MEMf64_AVX512 DATAXFER AVX512EVEX AVX512F_512 ATTRIBUTES: DISP8_MOVDDUP MASKOP_EVEX
 4072 VMOVDDUP VMOVDDUP_XMMf64_MASKmskw_XMMf64_AVX512 DATAXFER AVX512EVEX AVX512F_128 ATTRIBUTES: MASKOP_EVEX
@@ -1753,15 +1717,64 @@ DEF_ISEL(MOVSLDUP_XMMdq_XMMdq) = MOVSLDUP<V128W, V128>;
 
 namespace {
 
-template <typename D, typename S1>
-DEF_SEM(SQRTSS, D dst, S1 src1) {
+#define MAKE_MOVSxDUP(name, src_idx) \
+  template <typename D, typename S1> \
+  DEF_SEM(MOVS##name##DUP, D dst, S1 src) { \
+    auto src_vec = FReadV32(src); \
+    auto dst_vec = FClearV32(FReadV32(dst)); \
+    auto vector_count = NumVectorElems(src_vec); \
+    _Pragma("unroll") for (auto idx = 0u; idx < vector_count; idx += 2) { \
+      auto src_float = FExtractV32(src_vec, idx + src_idx); \
+      dst_vec = FInsertV32(dst_vec, idx, src_float); \
+      dst_vec = FInsertV32(dst_vec, idx + 1, src_float); \
+    } \
+    FWriteV32(dst, dst_vec); \
+    return memory; \
+  }
 
-  // Extract a "single-precision" (32-bit) float from [31:0] of src1 vector:
-  auto src_float = FExtractV32(FReadV32(src1), 0);
+MAKE_MOVSxDUP(L, 0u) MAKE_MOVSxDUP(H, 1u)
 
-  // Store the square root result in dest[32:0]:
+#undef MAKE_MOVDDUP
+
+}  // namespace
+
+DEF_ISEL(MOVSLDUP_XMMps_MEMps) = MOVSLDUP<V128W, MV128>;
+DEF_ISEL(MOVSLDUP_XMMps_XMMps) = MOVSLDUP<V128W, V128>;
+IF_AVX(DEF_ISEL(VMOVSLDUP_XMMdq_MEMdq) = MOVSLDUP<VV128W, MV128>;)
+IF_AVX(DEF_ISEL(VMOVSLDUP_XMMdq_XMMdq) = MOVSLDUP<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VMOVSLDUP_YMMqq_MEMqq) = MOVSLDUP<VV256W, MV256>;)
+IF_AVX(DEF_ISEL(VMOVSLDUP_YMMqq_YMMqq) = MOVSLDUP<VV256W, V256>;)
+
+DEF_ISEL(MOVSHDUP_XMMps_MEMps) = MOVSHDUP<V128W, MV128>;
+DEF_ISEL(MOVSHDUP_XMMps_XMMps) = MOVSHDUP<V128W, V128>;
+IF_AVX(DEF_ISEL(VMOVSHDUP_XMMdq_MEMdq) = MOVSHDUP<VV128W, MV128>;)
+IF_AVX(DEF_ISEL(VMOVSHDUP_XMMdq_XMMdq) = MOVSHDUP<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VMOVSHDUP_YMMqq_MEMqq) = MOVSHDUP<VV256W, MV256>;)
+IF_AVX(DEF_ISEL(VMOVSHDUP_YMMqq_YMMqq) = MOVSHDUP<VV256W, V256>;)
+
+// [MERGE 2026-08-13] Preserve the `_XMMdq_` iform aliases our web-lift fork added
+// (1d5dd7f) — the azul layout solver's decoder names some movshdup/movsldup ops with
+// the integer-domain `_XMMdq_` suffix; upstream only defines the `_XMMps_`/AVX forms.
+// Harmless if the decoder never emits them; avoids a HandleUnsupported regression if
+// it does. They bind to upstream's MAKE_MOVSxDUP-generated MOVSHDUP/MOVSLDUP templates.
+DEF_ISEL(MOVSHDUP_XMMdq_MEMdq) = MOVSHDUP<V128W, MV128>;
+DEF_ISEL(MOVSHDUP_XMMdq_XMMdq) = MOVSHDUP<V128W, V128>;
+DEF_ISEL(MOVSLDUP_XMMdq_MEMdq) = MOVSLDUP<V128W, MV128>;
+DEF_ISEL(MOVSLDUP_XMMdq_XMMdq) = MOVSLDUP<V128W, V128>;
+
+namespace {
+
+template <typename D, typename S1, typename S2>
+DEF_SEM(SQRTSS, D dst, S1 src1, S2 src2) {
+
+  // Extract a "single-precision" (32-bit) float from [31:0] of src2 vector:
+  auto src_float = FExtractV32(FReadV32(src2), 0);
+
+  // Initialize dest vector, while also copying src1[127:32] -> dst[127:32].
+  auto temp_vec = FReadV32(src1);
+
+  // Store the square root result in dest[31:0]:
   auto square_root = SquareRoot32(memory, state, src_float);
-  auto temp_vec = FReadV32(dst);  // initialize a destination vector
   temp_vec = FInsertV32(temp_vec, 0, square_root);
 
   // Write out the result and return memory state:
@@ -1769,15 +1782,17 @@ DEF_SEM(SQRTSS, D dst, S1 src1) {
   return memory;
 }
 
-template <typename D, typename S1>
-DEF_SEM(RSQRTSS, D dst, S1 src1) {
+template <typename D, typename S1, typename S2>
+DEF_SEM(RSQRTSS, D dst, S1 src1, S2 src2) {
 
-  // Extract a "single-precision" (32-bit) float from [31:0] of src1 vector:
-  auto src_float = FExtractV32(FReadV32(src1), 0);
+  // Extract a "single-precision" (32-bit) float from [31:0] of src2 vector:
+  auto src_float = FExtractV32(FReadV32(src2), 0);
 
-  // Store the square root result in dest[32:0]:
+  // Initialize dest vector, while also copying src1[127:32] -> dst[127:32].
+  auto temp_vec = FReadV32(src1);
+
+  // Store the square root result in dest[31:0]:
   auto square_root = SquareRoot32(memory, state, src_float);
-  auto temp_vec = FReadV32(dst);  // initialize a destination vector
   temp_vec = FInsertV32(temp_vec, 0, FDiv(1.0f, square_root));
 
   // Write out the result and return memory state:
@@ -1824,8 +1839,8 @@ DEF_SEM(VRSQRTSS, D dst, S1 src1, S2 src2) {
 #endif  // HAS_FEATURE_AVX
 }  // namespace
 
-DEF_ISEL(SQRTSS_XMMss_MEMss) = SQRTSS<V128W, MV32>;
-DEF_ISEL(SQRTSS_XMMss_XMMss) = SQRTSS<V128W, V128>;
+DEF_ISEL(SQRTSS_XMMss_MEMss) = SQRTSS<V128W, V128, MV32>;
+DEF_ISEL(SQRTSS_XMMss_XMMss) = SQRTSS<V128W, V128, V128>;
 IF_AVX(DEF_ISEL(VSQRTSS_XMMdq_XMMdq_MEMd) = VSQRTSS<VV128W, V128, MV32>;)
 IF_AVX(DEF_ISEL(VSQRTSS_XMMdq_XMMdq_XMMd) = VSQRTSS<VV128W, V128, V128>;)
 /*
@@ -1834,8 +1849,8 @@ IF_AVX(DEF_ISEL(VSQRTSS_XMMdq_XMMdq_XMMd) = VSQRTSS<VV128W, V128, V128>;)
 4318 VSQRTSS VSQRTSS_XMMf32_MASKmskw_XMMf32_MEMf32_AVX512 AVX512 AVX512EVEX AVX512F_SCALAR ATTRIBUTES: DISP8_SCALAR MASKOP_EVEX MEMORY_FAULT_SUPPRESSION MXCSR SIMD_SCALAR
 */
 
-DEF_ISEL(RSQRTSS_XMMss_MEMss) = RSQRTSS<V128W, MV32>;
-DEF_ISEL(RSQRTSS_XMMss_XMMss) = RSQRTSS<V128W, V128>;
+DEF_ISEL(RSQRTSS_XMMss_MEMss) = RSQRTSS<V128W, V128, MV32>;
+DEF_ISEL(RSQRTSS_XMMss_XMMss) = RSQRTSS<V128W, V128, V128>;
 IF_AVX(DEF_ISEL(VRSQRTSS_XMMdq_XMMdq_MEMd) = VRSQRTSS<VV128W, V128, MV32>;)
 IF_AVX(DEF_ISEL(VRSQRTSS_XMMdq_XMMdq_XMMd) = VRSQRTSS<VV128W, V128, V128>;)
 
@@ -1854,7 +1869,7 @@ DEF_HELPER(SquareRoot64, float64_t src_float)->float64_t {
           1;  // equivalent to a bitwise OR with 0x0008000000000000
       square_root = temp_nan.d;
 
-    // Else, src is a QNaN. Pass it directly to the result:
+      // Else, src is a QNaN. Pass it directly to the result:
     } else {
       square_root = src_float;
     }
@@ -1865,22 +1880,24 @@ DEF_HELPER(SquareRoot64, float64_t src_float)->float64_t {
       uint64_t indef_qnan = 0xFFF8000000000000ULL;
       square_root = reinterpret_cast<float64_t &>(indef_qnan);
     } else {
-      square_root = std::sqrt(src_float);
+      square_root = __builtin_sqrt(src_float);
     }
   }
 
   return square_root;
 }
 
-template <typename D, typename S1>
-DEF_SEM(SQRTSD, D dst, S1 src1) {
+template <typename D, typename S1, typename S2>
+DEF_SEM(SQRTSD, D dst, S1 src1, S2 src2) {
 
-  // Extract a "double-precision" (64-bit) float from [63:0] of src1 vector:
-  auto src_float = FExtractV64(FReadV64(src1), 0);
+  // Extract a "double-precision" (64-bit) float from [63:0] of src2 vector:
+  auto src_float = FExtractV64(FReadV64(src2), 0);
+
+  // Initialize dest vector, while also copying src1[127:64] -> dst[127:64].
+  auto temp_vec = FReadV64(src1);
 
   // Store the square root result in dest[63:0]:
   auto square_root = SquareRoot64(memory, state, src_float);
-  auto temp_vec = FReadV64(dst);  // initialize a destination vector
   temp_vec = FInsertV64(temp_vec, 0, square_root);
 
   // Write out the result and return memory state:
@@ -1910,8 +1927,8 @@ DEF_SEM(VSQRTSD, D dst, S1 src1, S2 src2) {
 
 }  // namespace
 
-DEF_ISEL(SQRTSD_XMMsd_MEMsd) = SQRTSD<V128W, MV64>;
-DEF_ISEL(SQRTSD_XMMsd_XMMsd) = SQRTSD<V128W, V128>;
+DEF_ISEL(SQRTSD_XMMsd_MEMsd) = SQRTSD<V128W, V128, MV64>;
+DEF_ISEL(SQRTSD_XMMsd_XMMsd) = SQRTSD<V128W, V128, V128>;
 IF_AVX(DEF_ISEL(VSQRTSD_XMMdq_XMMdq_MEMq) = VSQRTSD<VV128W, V128, MV64>;)
 IF_AVX(DEF_ISEL(VSQRTSD_XMMdq_XMMdq_XMMq) = VSQRTSD<VV128W, V128, V128>;)
 
@@ -2105,6 +2122,27 @@ DEF_ISEL(ROUNDPD_XMMpd_MEMpd_IMMb) = ROUNDPD<V128W, MV128>;
 4297 VSQRTSD VSQRTSD_XMMf64_MASKmskw_XMMf64_MEMf64_AVX512 AVX512 AVX512EVEX AVX512F_SCALAR ATTRIBUTES: DISP8_SCALAR MASKOP_EVEX MEMORY_FAULT_SUPPRESSION MXCSR SIMD_SCALAR
 */
 
+namespace {
+
+template <typename D, typename S1>
+DEF_SEM(SQRTPD, D dst, S1 src1) {
+  auto src_vec = FReadV64(src1);
+
+  auto sqrt_0 = SquareRoot64(memory, state, FExtractV64(src_vec, 0));
+  auto sqrt_1 = SquareRoot64(memory, state, FExtractV64(src_vec, 1));
+
+  auto temp_vec = FReadV64(dst);
+  temp_vec = FInsertV64(temp_vec, 0, sqrt_0);
+  temp_vec = FInsertV64(temp_vec, 1, sqrt_1);
+
+  FWriteV64(dst, temp_vec);
+  return memory;
+}
+
+}  // namespace
+
+DEF_ISEL(SQRTPD_XMMpd_MEMpd) = SQRTPD<V128W, MV128>;
+DEF_ISEL(SQRTPD_XMMpd_XMMpd) = SQRTPD<V128W, V128>;
 
 namespace {
 
@@ -2193,17 +2231,25 @@ DEF_SEM(HADDPS, D dst, S1 src1, S2 src2) {
 
   // Compute the horizontal packing
   auto vec_count = NumVectorElems(lhs_vec);
+  auto tmp_vec_count = vec_count;
+  if (vec_count == 8) {
+    // For VEX.256, it is basically two 128bits concatenated.
+    // The upper half of lhs_vec will be inserted into dst_vec after the lower half of rhs_vec
+    tmp_vec_count /= 2;
+  }
   _Pragma("unroll") for (size_t index = 0; index < vec_count; index += 2) {
     auto v1 = FExtractV32(lhs_vec, index);
     auto v2 = FExtractV32(lhs_vec, index + 1);
-    auto i = UDiv(UInt32(index), UInt32(2));
+    auto off = Select(index < tmp_vec_count, 0, 2);
+    auto i = UAdd(UDiv(UInt32(index), UInt32(2)), UInt32(off));
     dst_vec = FInsertV32(dst_vec, i, FAdd(v1, v2));
   }
   _Pragma("unroll") for (size_t index = 0; index < NumVectorElems(rhs_vec);
                          index += 2) {
     auto v1 = FExtractV32(rhs_vec, index);
     auto v2 = FExtractV32(rhs_vec, index + 1);
-    auto i = UDiv(UAdd(UInt32(index), UInt32(vec_count)), UInt32(2));
+    auto off = Select(index < tmp_vec_count, tmp_vec_count, vec_count);
+    auto i = UDiv(UAdd(UInt32(index), UInt32(off)), UInt32(2));
     dst_vec = FInsertV32(dst_vec, i, FAdd(v1, v2));
   }
   FWriteV32(dst, dst_vec);
@@ -2216,19 +2262,30 @@ DEF_SEM(HADDPD, D dst, S1 src1, S2 src2) {
   auto rhs_vec = FReadV64(src2);
   auto dst_vec = FClearV64(FReadV64(dst));
 
-  // Compute the horizontal packing
+  static_assert(
+      NumVectorElems(lhs_vec) == NumVectorElems(rhs_vec),
+      "First and second source vector must have the same number of elements");
+
   auto vec_count = NumVectorElems(lhs_vec);
+  auto tmp_vec_count = vec_count;
+  if (vec_count == 4) {
+    // For VEX.256, it is basically two 128bits concatenated.
+    // The upper half of lhs_vec will be inserted into dst_vec after the lower half of rhs_vec
+    tmp_vec_count /= 2;
+  }
+  // Compute the horizontal packing
   _Pragma("unroll") for (size_t index = 0; index < vec_count; index += 2) {
     auto v1 = FExtractV64(lhs_vec, index);
     auto v2 = FExtractV64(lhs_vec, index + 1);
-    auto i = UDiv(UInt32(index), UInt32(2));
+    auto off = Select(index < tmp_vec_count, 0, 1);
+    auto i = UAdd(UDiv(UInt32(index), UInt32(2)), UInt32(off));
     dst_vec = FInsertV64(dst_vec, i, FAdd(v1, v2));
   }
-  _Pragma("unroll") for (size_t index = 0; index < NumVectorElems(rhs_vec);
-                         index += 2) {
+  _Pragma("unroll") for (size_t index = 0; index < vec_count; index += 2) {
     auto v1 = FExtractV64(rhs_vec, index);
     auto v2 = FExtractV64(rhs_vec, index + 1);
-    auto i = UDiv(UAdd(UInt32(index), UInt32(vec_count)), UInt32(2));
+    auto off = Select(index < tmp_vec_count, tmp_vec_count, vec_count);
+    auto i = UDiv(UAdd(UInt32(index), UInt32(off)), UInt32(2));
     dst_vec = FInsertV64(dst_vec, i, FAdd(v1, v2));
   }
   FWriteV64(dst, dst_vec);
@@ -2360,3 +2417,200 @@ DEF_ISEL(LDMXCSR_MEMd) = LDMXCSR;
 DEF_ISEL(STMXCSR_MEMd) = STMXCSR;
 IF_AVX(DEF_ISEL(VLDMXCSR_MEMd) = LDMXCSR;)
 IF_AVX(DEF_ISEL(VSTMXCSR_MEMd) = STMXCSR;)
+
+namespace {
+
+#define MAKE_PMOVSXx(prefix, suffix, sWidth, dWidth, elementNum) \
+  template <typename D, typename S> \
+  DEF_SEM(prefix##PMOVSX##suffix, D dst, S src) { \
+    auto src_vec = SReadV##sWidth(src); \
+    auto dst_vec = SClearV##dWidth(SReadV##dWidth(dst)); \
+    _Pragma("unroll") for (auto i = 0u; i < elementNum; i++) { \
+      auto v = SExtTo<int##dWidth##_t, int##sWidth##_t>( \
+          SExtractV##sWidth(src_vec, i)); \
+      dst_vec = SInsertV##dWidth(dst_vec, i, v); \
+    } \
+    SWriteV##dWidth(dst, dst_vec); \
+    return memory; \
+  }
+
+MAKE_PMOVSXx(, BW, 8, 16, 8);
+MAKE_PMOVSXx(, BD, 8, 32, 4);
+MAKE_PMOVSXx(, BQ, 8, 64, 2);
+MAKE_PMOVSXx(, WD, 16, 32, 4);
+MAKE_PMOVSXx(, WQ, 16, 64, 2);
+MAKE_PMOVSXx(, DQ, 32, 64, 2);
+#if HAS_FEATURE_AVX
+MAKE_PMOVSXx(V, BW, 8, 16, 16);
+MAKE_PMOVSXx(V, BD, 8, 32, 8);
+MAKE_PMOVSXx(V, BQ, 8, 64, 4);
+MAKE_PMOVSXx(V, WD, 16, 32, 8);
+MAKE_PMOVSXx(V, WQ, 16, 64, 4);
+MAKE_PMOVSXx(V, DQ, 32, 64, 4);
+
+#endif  // HAS_FEATURE_AVX
+
+#undef MAKE_PMOVSXx
+
+}  // namespace
+
+DEF_ISEL(PMOVSXBW_XMMdq_MEMq) = PMOVSXBW<V128W, MV64>;
+DEF_ISEL(PMOVSXBW_XMMdq_XMMq) = PMOVSXBW<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVSXBW_XMMdq_XMMq) = PMOVSXBW<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVSXBW_XMMdq_MEMq) = PMOVSXBW<VV128W, MV64>;)
+IF_AVX(DEF_ISEL(VPMOVSXBW_YMMqq_XMMdq) = VPMOVSXBW<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVSXBW_YMMqq_MEMdq) = VPMOVSXBW<VV256W, MV128>;)
+
+DEF_ISEL(PMOVSXBD_XMMdq_MEMd) = PMOVSXBD<V128W, MV32>;
+DEF_ISEL(PMOVSXBD_XMMdq_XMMd) = PMOVSXBD<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVSXBD_XMMdq_XMMd) = PMOVSXBD<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVSXBD_XMMdq_MEMd) = PMOVSXBD<VV128W, MV32>;)
+IF_AVX(DEF_ISEL(VPMOVSXBD_YMMqq_XMMq) = VPMOVSXBD<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVSXBD_YMMqq_MEMq) = VPMOVSXBD<VV256W, MV64>;)
+
+DEF_ISEL(PMOVSXBQ_XMMdq_MEMw) = PMOVSXBQ<V128W, MV16>;
+DEF_ISEL(PMOVSXBQ_XMMdq_XMMw) = PMOVSXBQ<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVSXBQ_XMMdq_XMMw) = PMOVSXBQ<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVSXBQ_XMMdq_MEMw) = PMOVSXBQ<VV128W, MV16>;)
+IF_AVX(DEF_ISEL(VPMOVSXBQ_YMMqq_XMMd) = VPMOVSXBQ<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVSXBQ_YMMqq_MEMd) = VPMOVSXBQ<VV256W, MV32>;)
+
+DEF_ISEL(PMOVSXWD_XMMdq_MEMq) = PMOVSXWD<V128W, MV64>;
+DEF_ISEL(PMOVSXWD_XMMdq_XMMq) = PMOVSXWD<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVSXWD_XMMdq_XMMq) = PMOVSXWD<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVSXWD_XMMdq_MEMq) = PMOVSXWD<VV128W, MV64>;)
+IF_AVX(DEF_ISEL(VPMOVSXWD_YMMqq_XMMdq) = VPMOVSXWD<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVSXWD_YMMqq_MEMdq) = VPMOVSXWD<VV256W, MV128>;)
+
+DEF_ISEL(PMOVSXWQ_XMMdq_MEMd) = PMOVSXWQ<V128W, MV32>;
+DEF_ISEL(PMOVSXWQ_XMMdq_XMMd) = PMOVSXWQ<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVSXWQ_XMMdq_XMMd) = PMOVSXWQ<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVSXWQ_XMMdq_MEMd) = PMOVSXWQ<VV128W, MV32>;)
+IF_AVX(DEF_ISEL(VPMOVSXWQ_YMMqq_XMMq) = VPMOVSXWQ<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVSXWQ_YMMqq_MEMq) = VPMOVSXWQ<VV256W, MV64>;)
+
+DEF_ISEL(PMOVSXDQ_XMMdq_MEMq) = PMOVSXDQ<V128W, MV64>;
+DEF_ISEL(PMOVSXDQ_XMMdq_XMMq) = PMOVSXDQ<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVSXDQ_XMMdq_XMMq) = PMOVSXDQ<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVSXDQ_XMMdq_MEMq) = PMOVSXDQ<VV128W, MV64>;)
+IF_AVX(DEF_ISEL(VPMOVSXDQ_YMMqq_XMMdq) = VPMOVSXDQ<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVSXDQ_YMMqq_MEMdq) = VPMOVSXDQ<VV256W, MV128>;)
+
+namespace {
+
+#define MAKE_PMOVZXx(prefix, suffix, sWidth, dWidth, elementNum) \
+  template <typename D, typename S> \
+  DEF_SEM(prefix##PMOVZX##suffix, D dst, S src) { \
+    auto src_vec = SReadV##sWidth(src); \
+    auto dst_vec = UClearV##dWidth(UReadV##dWidth(dst)); \
+    _Pragma("unroll") for (auto i = 0u; i < elementNum; i++) { \
+      auto v = ZExtTo<int##dWidth##_t, int##sWidth##_t>( \
+          SExtractV##sWidth(src_vec, i)); \
+      dst_vec = UInsertV##dWidth(dst_vec, i, v); \
+    } \
+    UWriteV##dWidth(dst, dst_vec); \
+    return memory; \
+  }
+
+MAKE_PMOVZXx(, BW, 8, 16, 8);
+MAKE_PMOVZXx(, BD, 8, 32, 4);
+MAKE_PMOVZXx(, BQ, 8, 64, 2);
+MAKE_PMOVZXx(, WD, 16, 32, 4);
+MAKE_PMOVZXx(, WQ, 16, 64, 2);
+MAKE_PMOVZXx(, DQ, 32, 64, 2);
+#if HAS_FEATURE_AVX
+MAKE_PMOVZXx(V, BW, 8, 16, 16);
+MAKE_PMOVZXx(V, BD, 8, 32, 8);
+MAKE_PMOVZXx(V, BQ, 8, 64, 4);
+MAKE_PMOVZXx(V, WD, 16, 32, 8);
+MAKE_PMOVZXx(V, WQ, 16, 64, 4);
+MAKE_PMOVZXx(V, DQ, 32, 64, 4);
+
+#endif  // HAS_FEATURE_AVX
+
+#undef MAKE_PMOVSXx
+
+}  // namespace
+
+DEF_ISEL(PMOVZXBW_XMMdq_MEMq) = PMOVZXBW<V128W, MV64>;
+DEF_ISEL(PMOVZXBW_XMMdq_XMMq) = PMOVZXBW<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVZXBW_XMMdq_XMMq) = PMOVZXBW<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVZXBW_XMMdq_MEMq) = PMOVZXBW<VV128W, MV64>;)
+IF_AVX(DEF_ISEL(VPMOVZXBW_YMMqq_XMMdq) = VPMOVZXBW<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVZXBW_YMMqq_MEMdq) = VPMOVZXBW<VV256W, MV128>;)
+
+DEF_ISEL(PMOVZXBD_XMMdq_MEMd) = PMOVZXBD<V128W, MV32>;
+DEF_ISEL(PMOVZXBD_XMMdq_XMMd) = PMOVZXBD<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVZXBD_XMMdq_XMMd) = PMOVZXBD<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVZXBD_XMMdq_MEMd) = PMOVZXBD<VV128W, MV32>;)
+IF_AVX(DEF_ISEL(VPMOVZXBD_YMMqq_XMMq) = VPMOVZXBD<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVZXBD_YMMqq_MEMq) = VPMOVZXBD<VV256W, MV64>;)
+
+DEF_ISEL(PMOVZXBQ_XMMdq_MEMw) = PMOVZXBQ<V128W, MV16>;
+DEF_ISEL(PMOVZXBQ_XMMdq_XMMw) = PMOVZXBQ<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVZXBQ_XMMdq_XMMw) = PMOVZXBQ<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVZXBQ_XMMdq_MEMw) = PMOVZXBQ<VV128W, MV16>;)
+IF_AVX(DEF_ISEL(VPMOVZXBQ_YMMqq_XMMd) = VPMOVZXBQ<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVZXBQ_YMMqq_MEMd) = VPMOVZXBQ<VV256W, MV32>;)
+
+DEF_ISEL(PMOVZXWD_XMMdq_MEMq) = PMOVZXWD<V128W, MV64>;
+DEF_ISEL(PMOVZXWD_XMMdq_XMMq) = PMOVZXWD<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVZXWD_XMMdq_XMMq) = PMOVZXWD<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVZXWD_XMMdq_MEMq) = PMOVZXWD<VV128W, MV64>;)
+IF_AVX(DEF_ISEL(VPMOVZXWD_YMMqq_XMMdq) = VPMOVZXWD<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVZXWD_YMMqq_MEMdq) = VPMOVZXWD<VV256W, MV128>;)
+
+DEF_ISEL(PMOVZXWQ_XMMdq_MEMd) = PMOVZXWQ<V128W, MV32>;
+DEF_ISEL(PMOVZXWQ_XMMdq_XMMd) = PMOVZXWQ<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVZXWQ_XMMdq_XMMd) = PMOVZXWQ<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVZXWQ_XMMdq_MEMd) = PMOVZXWQ<VV128W, MV32>;)
+IF_AVX(DEF_ISEL(VPMOVZXWQ_YMMqq_XMMq) = VPMOVZXWQ<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVZXWQ_YMMqq_MEMq) = VPMOVZXWQ<VV256W, MV64>;)
+
+DEF_ISEL(PMOVZXDQ_XMMdq_MEMq) = PMOVZXDQ<V128W, MV64>;
+DEF_ISEL(PMOVZXDQ_XMMdq_XMMq) = PMOVZXDQ<V128W, V128>;
+IF_AVX(DEF_ISEL(VPMOVZXDQ_XMMdq_XMMq) = PMOVZXDQ<VV128W, V128>;)
+IF_AVX(DEF_ISEL(VPMOVZXDQ_XMMdq_MEMq) = PMOVZXDQ<VV128W, MV64>;)
+IF_AVX(DEF_ISEL(VPMOVZXDQ_YMMqq_XMMdq) = VPMOVZXDQ<VV256W, V256>;)
+IF_AVX(DEF_ISEL(VPMOVZXDQ_YMMqq_MEMdq) = VPMOVZXDQ<VV256W, MV128>;)
+
+namespace {
+
+#define MAKE_ADDSUBx(suffix, element_width) \
+  template <typename D, typename S1, typename S2> \
+  DEF_SEM(ADDSUB##suffix, D dst, S1 src1, S2 src2) { \
+    auto src1_vec = FReadV##element_width(src1); \
+    auto src2_vec = FReadV##element_width(src2); \
+    auto dst_vec = FClearV##element_width(FReadV##element_width(dst)); \
+\
+    auto num_elements = NumVectorElems(src1_vec); \
+\
+    _Pragma("unroll") for (auto idx = 0u; idx < num_elements; ++idx) { \
+      auto src1_val = FExtractV##element_width(src1_vec, idx); \
+      auto src2_val = FExtractV##element_width(src2_vec, idx); \
+      auto op_val = \
+          Select(idx % 2, FAdd(src1_val, src2_val), FSub(src1_val, src2_val)); \
+      dst_vec = FInsertV##element_width(dst_vec, idx, op_val); \
+    } \
+    FWriteV##element_width(dst, dst_vec); \
+    return memory; \
+  }
+
+MAKE_ADDSUBx(PS, 32) MAKE_ADDSUBx(PD, 64)
+
+#undef MAKE_ADDSUBx
+}  // namespace
+
+DEF_ISEL(ADDSUBPS_XMMps_MEMps) = ADDSUBPS<V128W, V128, MV128>;
+DEF_ISEL(ADDSUBPS_XMMps_XMMps) = ADDSUBPS<V128W, V128, V128>;
+IF_AVX(DEF_ISEL(VADDSUBPS_XMMdq_XMMdq_MEMdq) = ADDSUBPS<VV128W, V128, MV128>;)
+IF_AVX(DEF_ISEL(VADDSUBPS_XMMdq_XMMdq_XMMdq) = ADDSUBPS<VV128W, V128, V128>;)
+IF_AVX(DEF_ISEL(VADDSUBPS_YMMqq_YMMqq_MEMqq) = ADDSUBPS<VV256W, V256, MV256>;)
+IF_AVX(DEF_ISEL(VADDSUBPS_YMMqq_YMMqq_YMMqq) = ADDSUBPS<VV256W, V256, V128>;)
+
+DEF_ISEL(ADDSUBPD_XMMpd_MEMpd) = ADDSUBPD<V128W, V128, MV128>;
+DEF_ISEL(ADDSUBPD_XMMpd_XMMpd) = ADDSUBPD<V128W, V128, V128>;
+IF_AVX(DEF_ISEL(VADDSUBPD_XMMdq_XMMdq_MEMdq) = ADDSUBPD<VV128W, V128, MV128>;)
+IF_AVX(DEF_ISEL(VADDSUBPD_XMMdq_XMMdq_XMMdq) = ADDSUBPD<VV128W, V128, V128>;)
+IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_MEMqq) = ADDSUBPD<VV256W, V256, MV256>;)
+IF_AVX(DEF_ISEL(VADDSUBPD_YMMqq_YMMqq_YMMqq) = ADDSUBPD<VV256W, V256, V128>;)
