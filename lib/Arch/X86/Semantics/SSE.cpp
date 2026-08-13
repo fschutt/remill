@@ -2122,27 +2122,9 @@ DEF_ISEL(ROUNDPD_XMMpd_MEMpd_IMMb) = ROUNDPD<V128W, MV128>;
 4297 VSQRTSD VSQRTSD_XMMf64_MASKmskw_XMMf64_MEMf64_AVX512 AVX512 AVX512EVEX AVX512F_SCALAR ATTRIBUTES: DISP8_SCALAR MASKOP_EVEX MEMORY_FAULT_SUPPRESSION MXCSR SIMD_SCALAR
 */
 
-namespace {
-
-template <typename D, typename S1>
-DEF_SEM(SQRTPD, D dst, S1 src1) {
-  auto src_vec = FReadV64(src1);
-
-  auto sqrt_0 = SquareRoot64(memory, state, FExtractV64(src_vec, 0));
-  auto sqrt_1 = SquareRoot64(memory, state, FExtractV64(src_vec, 1));
-
-  auto temp_vec = FReadV64(dst);
-  temp_vec = FInsertV64(temp_vec, 0, sqrt_0);
-  temp_vec = FInsertV64(temp_vec, 1, sqrt_1);
-
-  FWriteV64(dst, temp_vec);
-  return memory;
-}
-
-}  // namespace
-
-DEF_ISEL(SQRTPD_XMMpd_MEMpd) = SQRTPD<V128W, MV128>;
-DEF_ISEL(SQRTPD_XMMpd_XMMpd) = SQRTPD<V128W, V128>;
+// [MERGE 2026-08-13] Our 1d5dd7f SQRTPD (DEF_SEM + XMMpd ISELs) was removed here —
+// upstream trailofbits (5999b97) added an equivalent SQRTPD earlier in this file, so
+// keeping ours was a redefinition. Upstream's is now canonical.
 
 namespace {
 
