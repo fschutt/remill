@@ -51,6 +51,8 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <set>
+#include <unordered_set>
 
 DEFINE_string(os, REMILL_OS,
               "Operating system name of the code being "
@@ -144,6 +146,55 @@ struct SimpleTraceManager : remill::TraceManager {
         memory(memory),
         entry(entry) {}
 
+  // Valid instruction-BOUNDARY set for a contiguous code block, built by a
+  // linear decode from `lo`. Cached because a function with N jump tables would
+  // otherwise re-decode its whole body N times.
+  //
+  // Needed because the x86 jump-table reader below cannot know a table's LENGTH
+  // from the table itself, and MSVC/LLVM emit the per-switch tables BACK TO BACK
+  // in .rdata. Reading past table T therefore walks into table T+1, whose entries
+  // are offsets relative to T+1's base — evaluated against T's base they land a
+  // constant distance off, i.e. MID-INSTRUCTION. Emitting such an address as a
+  // devirtualized target makes the lifter decode garbage there (e.g. the second
+  // byte of `f3 48 0f 2a ..` cvtsi2ss decodes as the MMX CVTPI2PS) and abort with
+  // "Expected XMM7 to be an integral type". A real arm target is always an
+  // instruction start, so the first non-boundary entry marks the end of the table.
+  uint64_t bnd_lo = 1, bnd_hi = 0;
+  std::set<uint64_t> bnd;
+
+  const std::set<uint64_t> &InstBoundaries(uint64_t lo, uint64_t hi) {
+    if (lo == bnd_lo && hi == bnd_hi) {
+      return bnd;
+    }
+    bnd.clear();
+    bnd_lo = lo;
+    bnd_hi = hi;
+    std::string buf;
+    remill::Instruction inst;
+    for (uint64_t a = lo; a <= hi;) {
+      buf.clear();
+      for (uint64_t k = 0; k < 16 && a + k <= hi; k++) {
+        auto it = memory.find(a + k);
+        if (it == memory.end()) {
+          break;
+        }
+        buf.push_back(static_cast<char>(it->second));
+      }
+      if (buf.empty()) {
+        break;
+      }
+      inst.Reset();
+      if (!arch->DecodeInstruction(a, buf, inst, arch->CreateInitialContext()) ||
+          !inst.NumBytes()) {
+        a++;  // undecodable (padding / data): resync a byte at a time
+        continue;
+      }
+      bnd.insert(a);
+      a += inst.NumBytes();
+    }
+    return bnd;
+  }
+
   // M12.7: jump-table devirtualization for `br Xn` (a `match` lowered to a
   // PC-relative jump table). The arm targets are intra-fn instructions; the
   // lifted IR computes the target correctly but `br Xn` would otherwise become
@@ -181,32 +232,90 @@ struct SimpleTraceManager : remill::TraceManager {
         v = it->second;
         return true;
       };
+      // 2026-08-14: this used to require the idiom at FIXED byte offsets
+      // (lea@-14, movslq@-7, add@-3). Real LLVM output breaks that in two ways,
+      // and 18 of the 23 jump tables in ONE function (build_compact_cache_with_
+      // inheritance) failed to match — each silently becoming __remill_jump ->
+      // missing_block, which RETURNS, so the whole `match` body was skipped and
+      // struct fields were left unwritten:
+      //   (a) the `lea` is HOISTED — the table base is materialised once into a
+      //       callee-saved reg (r14/rbp) and reused by several tables, so there
+      //       is no lea directly before the jmp at all;
+      //   (b) `movslq` is 5 bytes, not 4, when the base reg is rbp/r13 (mod=01
+      //       forces a disp8), which shifts every fixed offset.
+      // So walk REAL instruction boundaries backwards instead of guessing sizes.
+      uint64_t clo = inst.pc, chi = inst.pc, guard = 0;
+      while (memory.count(clo - 1) && ++guard < (1u << 18)) clo--;
+      guard = 0;
+      while (memory.count(chi + 1) && ++guard < (1u << 18)) chi++;
+      const std::set<uint64_t> &bounds = InstBoundaries(clo, chi);
+      auto bit = bounds.find(inst.pc);
+      bool ok = bit != bounds.end();
       uint8_t b;
-      bool ok = inst.pc >= 14;
-      // lea %Rb,[rip+disp32]: REX.W 8D /r, modrm mod=00 rm=101
-      if (ok) ok = rdb(inst.pc - 14, b) && (b & 0xF8) == 0x48;
-      if (ok) ok = rdb(inst.pc - 13, b) && b == 0x8D;
-      if (ok) ok = rdb(inst.pc - 12, b) && (b & 0xC7) == 0x05;
-      // movslq %Rt,[%Rb+%Ri*4]: REX.W 63 /r (+SIB)
-      if (ok) ok = rdb(inst.pc - 7, b) && (b & 0xF8) == 0x48;
-      if (ok) ok = rdb(inst.pc - 6, b) && b == 0x63;
-      // add %Rt,%Rb: REX.W 01 /r
-      if (ok) ok = rdb(inst.pc - 3, b) && (b & 0xF8) == 0x48;
-      if (ok) ok = rdb(inst.pc - 2, b) && b == 0x01;
+      int rt = -1, rb = -1;  // jump-target reg, table-base reg
+      uint64_t p_add = 0, p_mov = 0;
+      if (ok) {  // prev instruction: add %Rb,%Rt  (REX.W 01 /r, mod=11)
+        if (bit == bounds.begin()) ok = false; else { --bit; p_add = *bit; }
+      }
+      if (ok) ok = rdb(p_add, b) && (b & 0xF8) == 0x48;
       if (ok) {
-        int32_t disp = 0;
-        for (int i = 0; i < 4 && ok; i++) {
-          uint8_t d;
-          if (rdb(inst.pc - 11 + i, d)) disp |= static_cast<int32_t>(d) << (8 * i);
-          else ok = false;
-        }
+        uint8_t rex = b, modrm = 0;
+        ok = rdb(p_add + 1, b) && b == 0x01 && rdb(p_add + 2, modrm) &&
+             (modrm & 0xC0) == 0xC0 && (p_add + 3) == inst.pc;
         if (ok) {
+          rt = (modrm & 7) | ((rex & 1) << 3);          // r/m = dst = jump target
+          rb = ((modrm >> 3) & 7) | ((rex & 4) << 1);   // reg = table base
+        }
+      }
+      if (ok) {  // prev-prev: movslq %Rt,[%Rb+%Ri*4]  (REX.W 63 /r + SIB scale=4)
+        if (bit == bounds.begin()) ok = false; else { --bit; p_mov = *bit; }
+      }
+      if (ok) ok = rdb(p_mov, b) && (b & 0xF8) == 0x48;
+      if (ok) {
+        uint8_t rex = b, modrm = 0, sib = 0;
+        ok = rdb(p_mov + 1, b) && b == 0x63 && rdb(p_mov + 2, modrm) &&
+             (modrm & 7) == 4 && rdb(p_mov + 3, sib) && ((sib >> 6) & 3) == 2 &&
+             (((modrm >> 3) & 7) | ((rex & 4) << 1)) == rt &&
+             ((sib & 7) | ((rex & 1) << 3)) == rb;
+      }
+      // Now find where %Rb was set: the nearest preceding
+      // `lea %Rb,[rip+disp32]` (REX.W 8D /r, mod=00 rm=101, 7 bytes). Scanning
+      // by boundary (not by byte) is what makes the hoisted-lea case work.
+      int32_t disp = 0;
+      uint64_t p_lea = 0;
+      if (ok) {
+        ok = false;
+        for (int back = 0; back < 96 && bit != bounds.begin(); back++) {
+          --bit;
+          uint64_t p = *bit;
+          uint8_t rex = 0, op = 0, modrm = 0;
+          if (!rdb(p, rex) || (rex & 0xF8) != 0x48) continue;
+          if (!rdb(p + 1, op) || op != 0x8D) continue;
+          if (!rdb(p + 2, modrm) || (modrm & 0xC7) != 0x05) continue;
+          if ((((modrm >> 3) & 7) | ((rex & 4) << 1)) != rb) continue;
+          bool got = true;
+          disp = 0;
+          for (int i = 0; i < 4; i++) {
+            uint8_t d;
+            if (rdb(p + 3 + i, d)) disp |= static_cast<int32_t>(d) << (8 * i);
+            else { got = false; break; }
+          }
+          if (!got) continue;
+          p_lea = p;
+          ok = true;
+          break;
+        }
+      }
+      {
+        if (ok) {
+          // rip-relative: base = address of the NEXT instruction + disp32.
           const uint64_t tbl_base =
-              (inst.pc - 7) + static_cast<uint64_t>(static_cast<int64_t>(disp));
-          uint64_t clo = inst.pc, chi = inst.pc, guard = 0;
-          while (memory.count(clo - 1) && ++guard < (1u << 18)) clo--;
-          guard = 0;
-          while (memory.count(chi + 1) && ++guard < (1u << 18)) chi++;
+              (p_lea + 7) + static_cast<uint64_t>(static_cast<int64_t>(disp));
+          // Tables are emitted back-to-back in .rdata, so "target still inside
+          // the function" does NOT bound this table — the next table's entries
+          // also land in-function (just offset by the inter-table distance, i.e.
+          // mid-instruction). Bound on instruction boundaries instead
+          // (`bounds`, computed above for the backward instruction walk).
           std::vector<uint64_t> emitted;
           for (int i = 0; i < 1024; i++) {
             int32_t off = 0;
@@ -221,6 +330,10 @@ struct SimpleTraceManager : remill::TraceManager {
             const uint64_t tgt =
                 tbl_base + static_cast<uint64_t>(static_cast<int64_t>(off));
             if (tgt < clo || tgt > chi) break;  // first off-function entry ends the table
+            // First entry that isn't an instruction start = we have read past
+            // this table into the neighbouring one. Never emit it: a
+            // mid-instruction target aborts the lifter (see InstBoundaries).
+            if (!bounds.count(tgt)) break;
             bool dup = false;
             for (uint64_t e : emitted) if (e == tgt) { dup = true; break; }
             if (!dup) {
