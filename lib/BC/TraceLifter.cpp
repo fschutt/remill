@@ -364,6 +364,17 @@ bool TraceLifter::Impl::Lift(
       std::ignore = arch->DecodeInstruction(inst_addr, inst_bytes, inst,
                                             this->arch->CreateInitialContext());
 
+      // REMILL_TRACE_PC=1: print each instruction before lifting it, so a hard
+      // abort inside the lifter (plain LLVM assert, no glog backtrace — e.g.
+      // "Calling a function with bad signature!" from an ISEL arity mismatch)
+      // still names the culprit: it is the LAST line printed.
+      if (getenv("REMILL_TRACE_PC")) {
+        fprintf(stderr, "PC 0x%llx  %s\n",
+                static_cast<unsigned long long>(inst_addr),
+                inst.Serialize().c_str());
+        fflush(stderr);
+      }
+
       auto lift_status =
           inst.GetLifter()->LiftIntoBlock(inst, block, state_ptr);
       if (kLiftedInstruction != lift_status) {
