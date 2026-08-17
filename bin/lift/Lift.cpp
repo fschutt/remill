@@ -344,6 +344,35 @@ struct SimpleTraceManager : remill::TraceManager {
           }
         }
       }
+      // [FIX 2026-08-17] Boundary-sweep FALLBACK for indirect jumps the idiom
+      // matcher does NOT recognize. Returning nothing here lowers the jump to
+      // __remill_jump, and even routed through the runtime dispatcher a
+      // MID-FUNCTION target matches no case — the transfer silently vanishes.
+      // Observed: pad_integral's padding/alignment `match` (a jump table only
+      // reached when a WIDTH is specified) jumps to pad_integral+0x3AF; every
+      // `{:>N}` format returned Err while all other families worked.
+      //
+      // Offering every real instruction boundary of the contiguous code block
+      // as a kTraceLocal target makes TraceLifter emit its own PC switch over
+      // them, so ANY computed intra-fn target (odd table shapes, cmov-selected
+      // labels) lands on a lifted block — no runtime dispatcher involved. The
+      // boundary set keeps mid-instruction addresses out (the earlier abort
+      // class), and the existing 24 KiB contiguous-block cap bounds the cost;
+      // idiom-matched tables above never reach this fallback.
+      // Size gates: hundreds of mid-block entry points stress TraceLifter's
+      // block splitting; on large functions (layout_formatting_context, 14 KiB;
+      // unicode_bidi) the emitted IR failed the verifier ("Instruction does not
+      // dominate all uses"). Small blocks lift cleanly (pad_integral: 1296 B,
+      // 346 boundaries -> valid IR, 2 switches). Cap at 4 KiB / 1024 boundaries:
+      // covers the fmt-family tables; a too-big unmatched jump falls back to the
+      // dispatcher route, where the unk counter at least makes it visible.
+      if (!ok && chi - clo <= 4096 && bounds.size() <= 1024) {
+        for (uint64_t b : bounds) {
+          if (b != inst.pc) {
+            func(b, remill::DevirtualizedTargetKind::kTraceLocal);
+          }
+        }
+      }
       return;
     }
     // Only devirt the COMPILER JUMP-TABLE pattern: `br Xn` immediately preceded
