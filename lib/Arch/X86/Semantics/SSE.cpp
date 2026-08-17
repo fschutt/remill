@@ -1764,17 +1764,24 @@ DEF_ISEL(MOVSLDUP_XMMdq_XMMdq) = MOVSLDUP<V128W, V128>;
 
 namespace {
 
-template <typename D, typename S1, typename S2>
-DEF_SEM(SQRTSS, D dst, S1 src1, S2 src2) {
+// NON-VEX scalar sqrt: TWO params, not three. The pinned XED decodes
+// `SQRTSS xmm, xmm/m32` with a WRITE-ONLY dst (upper-bit preservation is
+// modelled by reading back through the write-ref below), so the lifter
+// supplies exactly 2 operand args. Upstream's unified 3-param SEM assumes a
+// newer XED that marks dst RW (which remill expands into write+read = 3 args);
+// with our XED that mismatch aborts the lifter at CallInst::Create ("Calling a
+// function with bad signature!") — hit by get_line_constraints' `sqrtss`.
+// The VEX forms (VSQRTSS/VRSQRTSS below) genuinely have 3 operands and keep
+// their own 3-param SEMs.
+template <typename D, typename S1>
+DEF_SEM(SQRTSS, D dst, S1 src1) {
 
-  // Extract a "single-precision" (32-bit) float from [31:0] of src2 vector:
-  auto src_float = FExtractV32(FReadV32(src2), 0);
+  // Extract a "single-precision" (32-bit) float from [31:0] of src1 vector:
+  auto src_float = FExtractV32(FReadV32(src1), 0);
 
-  // Initialize dest vector, while also copying src1[127:32] -> dst[127:32].
-  auto temp_vec = FReadV32(src1);
-
-  // Store the square root result in dest[31:0]:
+  // Store the square root result in dest[31:0], preserving dst[127:32]:
   auto square_root = SquareRoot32(memory, state, src_float);
+  auto temp_vec = FReadV32(dst);  // initialize a destination vector
   temp_vec = FInsertV32(temp_vec, 0, square_root);
 
   // Write out the result and return memory state:
@@ -1782,17 +1789,15 @@ DEF_SEM(SQRTSS, D dst, S1 src1, S2 src2) {
   return memory;
 }
 
-template <typename D, typename S1, typename S2>
-DEF_SEM(RSQRTSS, D dst, S1 src1, S2 src2) {
+template <typename D, typename S1>
+DEF_SEM(RSQRTSS, D dst, S1 src1) {
 
-  // Extract a "single-precision" (32-bit) float from [31:0] of src2 vector:
-  auto src_float = FExtractV32(FReadV32(src2), 0);
+  // Extract a "single-precision" (32-bit) float from [31:0] of src1 vector:
+  auto src_float = FExtractV32(FReadV32(src1), 0);
 
-  // Initialize dest vector, while also copying src1[127:32] -> dst[127:32].
-  auto temp_vec = FReadV32(src1);
-
-  // Store the square root result in dest[31:0]:
+  // Store the reciprocal square root in dest[31:0], preserving dst[127:32]:
   auto square_root = SquareRoot32(memory, state, src_float);
+  auto temp_vec = FReadV32(dst);  // initialize a destination vector
   temp_vec = FInsertV32(temp_vec, 0, FDiv(1.0f, square_root));
 
   // Write out the result and return memory state:
@@ -1839,8 +1844,8 @@ DEF_SEM(VRSQRTSS, D dst, S1 src1, S2 src2) {
 #endif  // HAS_FEATURE_AVX
 }  // namespace
 
-DEF_ISEL(SQRTSS_XMMss_MEMss) = SQRTSS<V128W, V128, MV32>;
-DEF_ISEL(SQRTSS_XMMss_XMMss) = SQRTSS<V128W, V128, V128>;
+DEF_ISEL(SQRTSS_XMMss_MEMss) = SQRTSS<V128W, MV32>;
+DEF_ISEL(SQRTSS_XMMss_XMMss) = SQRTSS<V128W, V128>;
 IF_AVX(DEF_ISEL(VSQRTSS_XMMdq_XMMdq_MEMd) = VSQRTSS<VV128W, V128, MV32>;)
 IF_AVX(DEF_ISEL(VSQRTSS_XMMdq_XMMdq_XMMd) = VSQRTSS<VV128W, V128, V128>;)
 /*
@@ -1849,8 +1854,8 @@ IF_AVX(DEF_ISEL(VSQRTSS_XMMdq_XMMdq_XMMd) = VSQRTSS<VV128W, V128, V128>;)
 4318 VSQRTSS VSQRTSS_XMMf32_MASKmskw_XMMf32_MEMf32_AVX512 AVX512 AVX512EVEX AVX512F_SCALAR ATTRIBUTES: DISP8_SCALAR MASKOP_EVEX MEMORY_FAULT_SUPPRESSION MXCSR SIMD_SCALAR
 */
 
-DEF_ISEL(RSQRTSS_XMMss_MEMss) = RSQRTSS<V128W, V128, MV32>;
-DEF_ISEL(RSQRTSS_XMMss_XMMss) = RSQRTSS<V128W, V128, V128>;
+DEF_ISEL(RSQRTSS_XMMss_MEMss) = RSQRTSS<V128W, MV32>;
+DEF_ISEL(RSQRTSS_XMMss_XMMss) = RSQRTSS<V128W, V128>;
 IF_AVX(DEF_ISEL(VRSQRTSS_XMMdq_XMMdq_MEMd) = VRSQRTSS<VV128W, V128, MV32>;)
 IF_AVX(DEF_ISEL(VRSQRTSS_XMMdq_XMMdq_XMMd) = VRSQRTSS<VV128W, V128, V128>;)
 
@@ -1887,17 +1892,17 @@ DEF_HELPER(SquareRoot64, float64_t src_float)->float64_t {
   return square_root;
 }
 
-template <typename D, typename S1, typename S2>
-DEF_SEM(SQRTSD, D dst, S1 src1, S2 src2) {
+// NON-VEX: two params — see the SQRTSS note (pinned XED marks dst write-only,
+// so the lifter supplies 2 args; the 3-operand form is VSQRTSD below).
+template <typename D, typename S1>
+DEF_SEM(SQRTSD, D dst, S1 src1) {
 
-  // Extract a "double-precision" (64-bit) float from [63:0] of src2 vector:
-  auto src_float = FExtractV64(FReadV64(src2), 0);
+  // Extract a "double-precision" (64-bit) float from [63:0] of src1 vector:
+  auto src_float = FExtractV64(FReadV64(src1), 0);
 
-  // Initialize dest vector, while also copying src1[127:64] -> dst[127:64].
-  auto temp_vec = FReadV64(src1);
-
-  // Store the square root result in dest[63:0]:
+  // Store the square root result in dest[63:0], preserving dst[127:64]:
   auto square_root = SquareRoot64(memory, state, src_float);
+  auto temp_vec = FReadV64(dst);  // initialize a destination vector
   temp_vec = FInsertV64(temp_vec, 0, square_root);
 
   // Write out the result and return memory state:
@@ -1927,8 +1932,8 @@ DEF_SEM(VSQRTSD, D dst, S1 src1, S2 src2) {
 
 }  // namespace
 
-DEF_ISEL(SQRTSD_XMMsd_MEMsd) = SQRTSD<V128W, V128, MV64>;
-DEF_ISEL(SQRTSD_XMMsd_XMMsd) = SQRTSD<V128W, V128, V128>;
+DEF_ISEL(SQRTSD_XMMsd_MEMsd) = SQRTSD<V128W, MV64>;
+DEF_ISEL(SQRTSD_XMMsd_XMMsd) = SQRTSD<V128W, V128>;
 IF_AVX(DEF_ISEL(VSQRTSD_XMMdq_XMMdq_MEMq) = VSQRTSD<VV128W, V128, MV64>;)
 IF_AVX(DEF_ISEL(VSQRTSD_XMMdq_XMMdq_XMMq) = VSQRTSD<VV128W, V128, V128>;)
 
