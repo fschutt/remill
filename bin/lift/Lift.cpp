@@ -254,30 +254,125 @@ struct SimpleTraceManager : remill::TraceManager {
       uint8_t b;
       int rt = -1, rb = -1;  // jump-target reg, table-base reg
       uint64_t p_add = 0, p_mov = 0;
-      if (ok) {  // prev instruction: add %Rb,%Rt  (REX.W 01 /r, mod=11)
-        if (bit == bounds.begin()) ok = false; else { --bit; p_add = *bit; }
+      // [FIX] The machine scheduler SINKS unrelated instructions between the
+      // idiom's pieces (parse_css_color: four arm-common `xor %r,%r` zero-inits
+      // sit between the `add` and the `jmp`), so "immediately preceding" match
+      // offsets miss real tables — the third adjacency break in this matcher's
+      // history (fixed offsets, hoisted lea, 5-byte movslq). Anchor on the
+      // JMP'S OWN target register (which also stops a memory-indirect
+      // `jmp *(%r)` from false-matching a nearby reg-reg add) and walk back
+      // over real instruction boundaries, skipping an instruction only when a
+      // full decode proves it never MENTIONS the live registers — mention, not
+      // just write, so no operand-action subtleties are load-bearing. A decode
+      // failure or a control-flow instruction aborts the walk: falling back to
+      // the dispatcher is only a missed devirt, never a wrong table.
+      auto mentions = [&](uint64_t p, int r1, int r2) -> bool {
+        static const char *kAlias[16][5] = {
+            {"RAX", "EAX", "AX", "AL", "AH"},
+            {"RCX", "ECX", "CX", "CL", "CH"},
+            {"RDX", "EDX", "DX", "DL", "DH"},
+            {"RBX", "EBX", "BX", "BL", "BH"},
+            {"RSP", "ESP", "SP", "SPL", nullptr},
+            {"RBP", "EBP", "BP", "BPL", nullptr},
+            {"RSI", "ESI", "SI", "SIL", nullptr},
+            {"RDI", "EDI", "DI", "DIL", nullptr},
+            {"R8", "R8D", "R8W", "R8B", nullptr},
+            {"R9", "R9D", "R9W", "R9B", nullptr},
+            {"R10", "R10D", "R10W", "R10B", nullptr},
+            {"R11", "R11D", "R11W", "R11B", nullptr},
+            {"R12", "R12D", "R12W", "R12B", nullptr},
+            {"R13", "R13D", "R13W", "R13B", nullptr},
+            {"R14", "R14D", "R14W", "R14B", nullptr},
+            {"R15", "R15D", "R15W", "R15B", nullptr},
+        };
+        auto hits = [&](const std::string &n) -> bool {
+          if (n.empty()) return true;  // unnamed register: assume interference
+          for (int r : {r1, r2}) {
+            if (r < 0 || r > 15) continue;
+            for (int i = 0; i < 5 && kAlias[r][i]; i++) {
+              if (n == kAlias[r][i]) return true;
+            }
+          }
+          return false;
+        };
+        std::string buf;
+        for (uint64_t k = 0; k < 16; k++) {
+          uint8_t v;
+          if (!rdb(p + k, v)) break;
+          buf.push_back(static_cast<char>(v));
+        }
+        remill::Instruction di;
+        if (!arch->DecodeInstruction(p, buf, di, arch->CreateInitialContext())) {
+          return true;
+        }
+        if (di.IsControlFlow()) return true;
+        for (const auto &op : di.operands) {
+          switch (op.type) {
+            case remill::Operand::kTypeRegister:
+              if (hits(op.reg.name)) return true;
+              break;
+            case remill::Operand::kTypeShiftRegister:
+              if (hits(op.shift_reg.reg.name)) return true;
+              break;
+            case remill::Operand::kTypeAddress:
+              if (hits(op.addr.base_reg.name) || hits(op.addr.index_reg.name)) {
+                return true;
+              }
+              break;
+            case remill::Operand::kTypeImmediate:
+              break;
+            default:
+              return true;  // expression operands: not worth reasoning about
+          }
+        }
+        return false;
+      };
+      if (ok) {  // the jmp itself: [REX] FF /4 mod=11 → target register
+        uint64_t p = inst.pc;
+        uint8_t rex = 0;
+        if (rdb(p, b) && (b & 0xF0) == 0x40) { rex = b; p++; }
+        uint8_t modrm = 0;
+        ok = rdb(p, b) && b == 0xFF && rdb(p + 1, modrm) &&
+             (modrm & 0xF8) == 0xE0;  // mod=11, /4
+        if (ok) rt = (modrm & 7) | ((rex & 1) << 3);
       }
-      if (ok) ok = rdb(p_add, b) && (b & 0xF8) == 0x48;
-      if (ok) {
-        uint8_t rex = b, modrm = 0;
-        ok = rdb(p_add + 1, b) && b == 0x01 && rdb(p_add + 2, modrm) &&
-             (modrm & 0xC0) == 0xC0 && (p_add + 3) == inst.pc;
-        if (ok) {
-          rt = (modrm & 7) | ((rex & 1) << 3);          // r/m = dst = jump target
-          rb = ((modrm >> 3) & 7) | ((rex & 4) << 1);   // reg = table base
+      if (ok) {  // find `add %Rb,%Rt` (REX.W 01 /r, mod=11), ≤12 insns back
+        ok = false;
+        for (int back = 0; back < 12 && bit != bounds.begin(); back++) {
+          --bit;
+          uint64_t p = *bit;
+          uint8_t rex = 0, modrm = 0;
+          if (rdb(p, rex) && (rex & 0xF8) == 0x48 && rdb(p + 1, b) &&
+              b == 0x01 && rdb(p + 2, modrm) && (modrm & 0xC0) == 0xC0 &&
+              static_cast<int>((modrm & 7) | ((rex & 1) << 3)) == rt) {
+            rb = ((modrm >> 3) & 7) | ((rex & 4) << 1);  // reg = table base
+            p_add = p;
+            ok = true;
+            break;
+          }
+          if (mentions(p, rt, -1)) break;  // Rt no longer flows from the add
         }
       }
-      if (ok) {  // prev-prev: movslq %Rt,[%Rb+%Ri*4]  (REX.W 63 /r + SIB scale=4)
-        if (bit == bounds.begin()) ok = false; else { --bit; p_mov = *bit; }
+      if (ok) {  // find `movslq (%Rb,%Ri,4),%Rt` (REX.W 63 + SIB scale=4)
+        ok = false;
+        for (int back = 0; back < 12 && bit != bounds.begin(); back++) {
+          --bit;
+          uint64_t p = *bit;
+          uint8_t rex = 0, modrm = 0, sib = 0;
+          if (rdb(p, rex) && (rex & 0xF8) == 0x48 && rdb(p + 1, b) &&
+              b == 0x63 && rdb(p + 2, modrm) && (modrm & 7) == 4 &&
+              rdb(p + 3, sib) && ((sib >> 6) & 3) == 2 &&
+              static_cast<int>(((modrm >> 3) & 7) | ((rex & 4) << 1)) == rt &&
+              static_cast<int>((sib & 7) | ((rex & 1) << 3)) == rb) {
+            p_mov = p;
+            ok = true;
+            break;
+          }
+          if (mentions(p, rt, rb)) break;  // a write here breaks the idiom
+        }
       }
-      if (ok) ok = rdb(p_mov, b) && (b & 0xF8) == 0x48;
-      if (ok) {
-        uint8_t rex = b, modrm = 0, sib = 0;
-        ok = rdb(p_mov + 1, b) && b == 0x63 && rdb(p_mov + 2, modrm) &&
-             (modrm & 7) == 4 && rdb(p_mov + 3, sib) && ((sib >> 6) & 3) == 2 &&
-             (((modrm >> 3) & 7) | ((rex & 4) << 1)) == rt &&
-             ((sib & 7) | ((rex & 1) << 3)) == rb;
-      }
+      (void) p_add;
+      (void) p_mov;
       // Now find where %Rb was set: the nearest preceding
       // `lea %Rb,[rip+disp32]` (REX.W 8D /r, mod=00 rm=101, 7 bytes). Scanning
       // by boundary (not by byte) is what makes the hoisted-lea case work.
