@@ -91,6 +91,11 @@ DEFINE_bool(symbolic_regs, false, "Set registers to a symbolic value");
 // instead of over-sweeping a window. Format: "<addrhex>:<bytehex>;<addrhex>:<bytehex>".
 DEFINE_string(extra_data, "", "Extra memory regions: <addrhex>:<bytehex>;...");
 
+// Lift many functions in ONE process. Each line: "<entry_hex> <ir_out>
+// <bytes_hex> [<extra_data>|-]".
+DEFINE_string(batch_manifest, "",
+              "Path to a batch manifest; lifts every entry in one process.");
+
 using Memory = std::map<uint64_t, uint8_t>;
 
 // Unhexlify the data passed to `-bytes`, and fill in `memory` with each
@@ -796,61 +801,29 @@ struct Argument {
   }
 };
 
-int main(int argc, char *argv[]) {
-  SetVersion();
-  google::ParseCommandLineFlags(&argc, &argv, true);
-  google::InitGoogleLogging(argv[0]);
-
-
-  if (FLAGS_bytes.empty()) {
-    std::cerr << "Please specify a sequence of hex bytes to -bytes."
-              << std::endl;
-    return EXIT_FAILURE;
-  } else if (FLAGS_bytes.size() % 2) {
-    std::cerr << "Please specify an even number of nibbles to -bytes."
-              << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  if (FLAGS_arch.empty()) {
-    std::cerr
-        << "No architecture specified. Valid architectures: x86, amd64 (with or without "
-           "`_avx` or `_avx512` appended), aarch64, aarch32"
-        << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  if (FLAGS_address == (uint64_t) -1) {
-    FLAGS_address = 0;
-  }
-
-  if (FLAGS_entry_address == (uint64_t) -1) {
-    FLAGS_entry_address = FLAGS_address;
-  }
-
-  // Make sure `-address` and `-entry_address` are in-bounds for the target
-  // architecture's address size.
+// One function, lifted into its own semantics module.
+//
+// Split out of main so a batch run performs ONE process spawn for many
+// functions instead of one each. A full lift shells out ~100k times and a
+// wedged CreateProcess froze an entire run, so cutting spawn count is the
+// point; the semantics load stays per-entry because the Arch caches types
+// that belong to the module it was loaded with.
+static int LiftOne() {
+  // A fresh context/arch/semantics per entry. remill's Arch caches types
+  // that belong to the module its semantics were loaded into, so neither the
+  // Arch nor the module can be reused across entries - a second
+  // LoadArchSemantics on the same Arch aborts the process. Batching therefore
+  // saves the PROCESS SPAWN (and gflags/glog startup) per function, which is
+  // what the ~100k-spawn hang is about, not the semantics parse.
   llvm::LLVMContext context;
-  auto arch = remill::Arch::Get(
-      context, FLAGS_os,
-      FLAGS_arch);  // TODO: what happens with invalid arguments?
+  auto arch_owned = remill::Arch::Get(context, FLAGS_os, FLAGS_arch);
+  if (!arch_owned) {
+    std::cerr << "Cannot create arch" << std::endl;
+    return EXIT_FAILURE;
+  }
+  const remill::Arch *arch = arch_owned.get();
   const uint64_t addr_mask = ~0ULL >> (64UL - arch->address_size);
-  if (FLAGS_address != (FLAGS_address & addr_mask)) {
-    std::cerr << "Value " << std::hex << FLAGS_address
-              << " passed to -address does not fit into 32-bits. Did mean"
-              << " to specify a 64-bit architecture to -arch?" << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  if (FLAGS_entry_address != (FLAGS_entry_address & addr_mask)) {
-    std::cerr << "Value " << std::hex << FLAGS_entry_address
-              << " passed to -entry_address does not fit into 32-bits. Did mean"
-              << " to specify a 64-bit architecture to -arch?" << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  std::unique_ptr<llvm::Module> module(remill::LoadArchSemantics(arch.get()));
-
+  std::unique_ptr<llvm::Module> module(remill::LoadArchSemantics(arch));
   const auto mem_ptr_type = arch->MemoryPointerType();
 
   Memory memory = UnhexlifyInputBytes(addr_mask);
@@ -872,7 +845,7 @@ int main(int argc, char *argv[]) {
       }
     }
   }
-  SimpleTraceManager manager(arch.get(), module.get(), memory,
+  SimpleTraceManager manager(arch, module.get(), memory,
                              FLAGS_entry_address);
   if (!manager.TryReadExecutableByte(FLAGS_entry_address, nullptr)) {
     std::cerr << "No executable code at address 0x" << std::hex
@@ -884,7 +857,7 @@ int main(int argc, char *argv[]) {
 
   auto inst_lifter = arch->DefaultLifter(intrinsics);
 
-  remill::TraceLifter trace_lifter(arch.get(), manager);
+  remill::TraceLifter trace_lifter(arch, manager);
 
   // Lift all discoverable traces starting from `-entry_address` into
   // `module`.
@@ -963,7 +936,7 @@ int main(int argc, char *argv[]) {
   // Optimize the module, but with a particular focus on only the functions
   // that we actually lifted.
   remill::OptimizationGuide guide = {};
-  remill::OptimizeModule(arch, module, manager.traces, guide);
+  remill::OptimizeModule(arch, module.get(), manager.traces, guide);
 
   // Create a new module in which we will move all the lifted functions. Prepare
   // the module for code of this architecture, i.e. set the data layout, triple,
@@ -1218,4 +1191,97 @@ int main(int argc, char *argv[]) {
   }
 
   return ret;
+}
+
+int main(int argc, char *argv[]) {
+  SetVersion();
+  google::ParseCommandLineFlags(&argc, &argv, true);
+  google::InitGoogleLogging(argv[0]);
+
+
+  if (FLAGS_bytes.empty() && FLAGS_batch_manifest.empty()) {
+    std::cerr << "Please specify a sequence of hex bytes to -bytes."
+              << std::endl;
+    return EXIT_FAILURE;
+  } else if (!FLAGS_bytes.empty() && FLAGS_bytes.size() % 2) {
+    std::cerr << "Please specify an even number of nibbles to -bytes."
+              << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if (FLAGS_arch.empty()) {
+    std::cerr
+        << "No architecture specified. Valid architectures: x86, amd64 (with or without "
+           "`_avx` or `_avx512` appended), aarch64, aarch32"
+        << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if (FLAGS_address == (uint64_t) -1) {
+    FLAGS_address = 0;
+  }
+
+  if (FLAGS_entry_address == (uint64_t) -1) {
+    FLAGS_entry_address = FLAGS_address;
+  }
+
+  // Make sure `-address` and `-entry_address` are in-bounds for the target
+  // architecture's address size.
+  llvm::LLVMContext context;
+  auto arch = remill::Arch::Get(
+      context, FLAGS_os,
+      FLAGS_arch);  // TODO: what happens with invalid arguments?
+  const uint64_t addr_mask = ~0ULL >> (64UL - arch->address_size);
+  if (FLAGS_address != (FLAGS_address & addr_mask)) {
+    std::cerr << "Value " << std::hex << FLAGS_address
+              << " passed to -address does not fit into 32-bits. Did mean"
+              << " to specify a 64-bit architecture to -arch?" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if (FLAGS_entry_address != (FLAGS_entry_address & addr_mask)) {
+    std::cerr << "Value " << std::hex << FLAGS_entry_address
+              << " passed to -entry_address does not fit into 32-bits. Did mean"
+              << " to specify a 64-bit architecture to -arch?" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if (FLAGS_batch_manifest.empty()) {
+    return LiftOne();
+  }
+
+  // Batch: one line per function, "<entry_hex> <ir_out> <bytes_hex> [extra|-]".
+  // A manifest rather than a command line because the single-shot path already
+  // spills to a response file past 30k chars, and a batch is many times that.
+  std::ifstream manifest(FLAGS_batch_manifest);
+  if (!manifest) {
+    std::cerr << "Cannot open batch manifest " << FLAGS_batch_manifest
+              << std::endl;
+    return EXIT_FAILURE;
+  }
+  std::string line;
+  int failures = 0, count = 0;
+  while (std::getline(manifest, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream fields(line);
+    std::string entry_hex, ir_out, bytes_hex, extra;
+    if (!(fields >> entry_hex >> ir_out >> bytes_hex)) continue;
+    fields >> extra;
+    FLAGS_address = std::strtoull(entry_hex.c_str(), nullptr, 16);
+    FLAGS_entry_address = FLAGS_address;
+    FLAGS_bytes = bytes_hex;
+    FLAGS_ir_out = ir_out;
+    FLAGS_bc_out = "";
+    FLAGS_extra_data = (extra == "-" || extra.empty()) ? "" : extra;
+    ++count;
+    // One bad function must not cost the rest of the batch - the caller gets
+    // the same per-function failure it would from a single-shot run.
+    if (LiftOne() != EXIT_SUCCESS) {
+      LOG(ERROR) << "batch: failed to lift 0x" << std::hex << FLAGS_address;
+      ++failures;
+    }
+  }
+  std::cerr << "batch: lifted " << (count - failures) << "/" << count
+            << " function(s)" << std::endl;
+  return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
